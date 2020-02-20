@@ -6,6 +6,8 @@ extern int yylex (void);
 void yyerror (const char *s);
 }
 %code requires {
+	#define MAX_LEN 8
+	
     union nval_t {
          int ival;
          double fval; 
@@ -17,13 +19,14 @@ void yyerror (const char *s);
 
 %union {
    union nval_t nval;
-   char sval[8];
+   char sval[MAX_LEN];
    enum Relop_t relop_t;
    enum Addop_t addop_t;
    enum Mulop_t mulop_t;
 }
  
-%left IF ELSE WHILE INT FLOAT INPUT OUTPUT ':' ';' ',' '=' '(' ')'  '{' '}'
+%token <sval> UNRECOGNIZED_TOKEN
+%left IF ELSE WHILE INT FLOAT INPUT OUTPUT
 %left SWITCH CASE BREAK DEFAULT STATIC_CAST
 %left OR 
 %left AND 
