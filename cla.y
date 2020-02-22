@@ -11,6 +11,13 @@ void insert(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 void freeSymbolTable();
+void copyExpInfo(struct s_expInfo, struct s_expInfo);
+void performAddop(struct s_expInfo*, struct s_expInfo, enum e_addopType,struct s_expInfo);
+void performMulop(struct s_expInfo*, struct s_expInfo, enum e_mulopType,struct s_expInfo);
+void plus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
+void minus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
+void multiply(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
+void divide(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 
 struct s_symbol {
 	char name[MAX_LEN];
@@ -81,6 +88,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 
 %type <varType> type
 %type <idList> idlist
+%type <expInfo> expression term factor
 
 %error-verbose
 
@@ -109,7 +117,7 @@ stmt: assignment_stmt
     | break_stmt
     | stmt_block
 
-assignment_stmt: ID '=' expression ';'
+assignment_stmt: ID '=' expression ';' { /*todo: compare types*/  }
 
 input_stmt: INPUT '(' ID ')' ';'
 
@@ -142,15 +150,15 @@ boolterm: boolterm AND boolfactor
 boolfactor: NOT '(' boolexpr ')'
           | expression RELOP expression
 
-expression: expression ADDOP term
-          | term
+expression: expression ADDOP term { performAddop(&($$), $1, $2, $3); }
+          | term                  { copyExpInfo($$, $1); }
 
-term: term MULOP factor
-    | factor
+term: term MULOP factor           { performMulop(&($$), $1, $2, $3); }
+    | factor                      { copyExpInfo($$, $1); }
 
-factor: '(' expression ')'
-      | ID
-      | NUM
+factor: '(' expression ')'        { copyExpInfo($$, $2); }
+      | ID                        { /* todo: lookup */ $$.type = INT_T, $$.val.ival = 0;}
+      | NUM                       { copyExpInfo($$, $1); }
 
 %%
 
@@ -230,4 +238,99 @@ void freeSymbolTable() {
 		free(prevNode);
 	}
 	printf("symbol table freed\n");
+}
+
+void copyExpInfo(struct s_expInfo src, struct s_expInfo dest) {
+	dest.type = src.type;
+	switch (dest.type) {
+		case INT_T: dest.val.ival = src.val.ival; break;
+		case FLOAT_T: dest.val.fval = src.val.fval; break;
+	}
+}
+
+void performMulop(struct s_expInfo* res, 
+                  struct s_expInfo a, 
+                  enum e_mulopType opType,
+                  struct s_expInfo b) {
+	switch (opType) {
+		case MUL: multiply(res, a, b); break;
+		case DIV: divide(res, a, b); break;
+	}
+	if (res->type == INT_T) printf("Performed MULOP. res = %d\n", res->val.ival);
+	else printf("Performed MULOP. res = %.1f\n", res->val.fval);
+}
+
+void multiply(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
+	if (a.type == INT_T && b.type == INT_T) {
+		res->type = INT_T;
+		res->val.ival = a.val.ival * b.val.ival;
+	    printf("(%d) %d * (%d) %d = (%d) %d\n", a.type, a.val.ival, b.type, b.val.ival, res->type, res->val.ival); //todo: remove
+	} else {
+		res->type = FLOAT_T;
+		if (a.type == b.type == FLOAT_T)
+			res->val.fval = a.val.fval * b.val.fval;
+	    else if (a.type == FLOAT_T)
+			res->val.fval = a.val.fval * b.val.ival;
+	    else if (b.type == FLOAT_T)
+			res->val.fval = a.val.ival * b.val.fval;
+	}
+}
+
+void divide(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
+	if (a.type == INT_T && b.type == INT_T) {
+		res->type = INT_T;
+		res->val.ival = a.val.ival / b.val.ival;
+	} else {
+		res->type = FLOAT_T;
+		if (a.type == b.type == FLOAT_T)
+			res->val.fval = a.val.fval / b.val.fval;
+	    else if (a.type == FLOAT_T)
+			res->val.fval = a.val.fval / b.val.ival;
+	    else if (b.type == FLOAT_T)
+			res->val.fval = a.val.ival / b.val.fval;
+	}
+}
+
+void performAddop(struct s_expInfo* res, 
+                  struct s_expInfo a, 
+                  enum e_addopType opType,
+                  struct s_expInfo b) {
+	switch (opType) {
+		case PLUS: plus(res, a, b); break;
+		case MINUS: minus(res, a, b); break;
+	}
+	
+	if (res->type == INT_T) printf("Performed ADDLOP. res = %d\n", res->val.ival);
+	else printf("Performed ADDLOP. res = %.1f\n", res->val.fval);
+}
+
+void plus(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
+	if (a.type == INT_T && b.type == INT_T) {
+		res->type = INT_T;
+		res->val.ival = a.val.ival + b.val.ival;
+	    printf("(%d) %d + (%d) %d = (%d) %d\n", a.type, a.val.ival, b.type, b.val.ival, res->type, res->val.ival); //todo: remove
+	} else {
+		res->type = FLOAT_T;
+		if (a.type == b.type == FLOAT_T)
+			res->val.fval = a.val.fval + b.val.fval;
+	    else if (a.type == FLOAT_T)
+			res->val.fval = a.val.fval + b.val.ival;
+	    else if (b.type == FLOAT_T)
+			res->val.fval = a.val.ival + b.val.fval;
+	}
+}
+
+void minus(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
+	if (a.type == INT_T && b.type == INT_T) {
+		res->type = INT_T;
+		res->val.ival = a.val.ival - b.val.ival;
+	} else {
+		res->type = FLOAT_T;
+		if (a.type == b.type == FLOAT_T)
+			res->val.fval = a.val.fval - b.val.fval;
+	    else if (a.type == FLOAT_T)
+			res->val.fval = a.val.fval - b.val.ival;
+	    else if (b.type == FLOAT_T)
+			res->val.fval = a.val.ival - b.val.fval;
+	}
 }
