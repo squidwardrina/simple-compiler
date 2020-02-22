@@ -60,7 +60,7 @@ default                     { return DEFAULT; }
 ";"                         |
 "="                         { return yytext[0]; }
 
-{LETTER}{ALNUM}{0,8}  { strcpy(yylval.sval, yytext); return ID; }
+{LETTER}{ALNUM}{0,8}        { strcpy(yylval.sval, yytext); return ID; }
 
 {DIGIT}+                    { yylval.nval.ival = atoi(yytext); return NUM; }
 {DIGIT}+\.{DIGIT}+          { yylval.nval.fval = atof(yytext); return NUM; }
@@ -75,7 +75,7 @@ default                     { return DEFAULT; }
 
 {LETTER}{ALNUM}{9,}         |
 {DIGIT}+{LETTER}{ALNUM}*    |
-.                           { strncpy(yylval.sval, yytext, MAX_LEN); return UNRECOGNIZED_TOKEN; }
+.                           { strncpy(yylval.sval, yytext, MAX_LEN - 1); return UNRECOGNIZED_TOKEN; }
 
 %%
 

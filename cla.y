@@ -1,10 +1,17 @@
 %code {
 
 #include <stdio.h>
+#include <string.h>
+#include <stddef.h>
 
 extern int yylex (void);
 void yyerror (const char *s);
+void insert(char name[MAX_LEN], enum Var_t varType);
+struct NameList_t* createNewNameNode(char *name, struct NameList_t *next);
+void insertVarsToTable(enum Var_t varType, struct NameList_t *namesListHead);
+
 }
+
 %code requires {
 	#define MAX_LEN 8
 	
@@ -15,14 +22,29 @@ void yyerror (const char *s);
 	enum Relop_t {EQ, NE, GT, LT, GE, LE};
 	enum Addop_t {PLUS, MINUS};
 	enum Mulop_t {MUL, DIV};
+	
+	enum Var_t   {INT_T, FLOAT_T};
+	
+	struct NameList_t {
+		char name[MAX_LEN];
+		struct NameList_t* next;
+	};
+	struct NameNode_t {
+		struct NameList_t* nameList;
+	};
 }
 
 %union {
    union nval_t nval;
    char sval[MAX_LEN];
+   
    enum Relop_t relop_t;
    enum Addop_t addop_t;
    enum Mulop_t mulop_t;
+
+   enum Var_t varType; // todo: can be moved to code requires?
+   
+   struct NameNode_t nameNode;
 }
  
 %token <sval> UNRECOGNIZED_TOKEN
@@ -34,8 +56,11 @@ void yyerror (const char *s);
 %left <relop_t> RELOP 
 %left <addop_t> ADDOP
 %left <mulop_t> MULOP
-%left <nval> ID 
-%left <sval> NUM
+%left <nval> NUM
+%left <sval> ID
+
+%type <varType> type
+%type <nameNode> idlist
 
 %error-verbose
 
@@ -46,13 +71,13 @@ program: declarations stmt_block
 declarations: declarations declaration
             | /* empty */
 
-declaration: idlist ':' type ';'
+declaration: idlist ':' type ';' { insertVarsToTable($3, $1.nameList); }
 
-type: INT
-    | FLOAT
+type: INT                        { $$ = INT_T; } 
+    | FLOAT                      { $$ = FLOAT_T; }
 
-idlist: idlist ',' ID
-      | ID
+idlist: idlist ',' ID            { $$.nameList = createNewNameNode($3, $1.nameList); } 
+      | ID                       { $$.nameList = createNewNameNode($1, NULL); } 
 
 stmt: assignment_stmt
     | input_stmt
@@ -121,15 +146,38 @@ int main (int argc, char **argv)
        fprintf (stderr, "failed to open %s\n", argv[1]);
 	   return 2;
   }
-  
   yyparse ();
   
   fclose (yyin);
   return 0;
 }
 
+void insert(char name[MAX_LEN], enum Var_t varType) {}
+
 void yyerror (const char *s)
 {
   extern int line;
   fprintf (stderr, "line %d: %s\n", line, s);
+}
+
+struct NameList_t* createNewNameNode(char *name, struct NameList_t *next) { 
+    struct NameList_t* nameList = 
+		(struct NameList_t*) malloc(sizeof(struct NameNode_t)); 
+    strcpy(nameList->name, name);
+    nameList->next = next;
+	printf("Name node added to list: %s, next: %p\n", name, next);
+	return nameList;
+} 
+
+void insertVarsToTable(enum Var_t varType, struct NameList_t *namesListHead) {
+	printf("\n-----> declarations started\n");
+	
+	struct NameList_t* currName = namesListHead;       
+	while (currName != NULL) {
+		insert(currName->name, varType);
+		printf("inserted: %s, typeEnum: %d\n", currName->name, varType);
+		currName = currName->next;
+	}
+	
+	printf("<----- declarations ended\n");
 }
