@@ -18,6 +18,8 @@ void plus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void minus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void multiply(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void divide(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
+void assignValue(char[], struct s_expInfo);
+struct s_symbol* symbolLookup(char[]);
 
 struct s_symbol {
 	char name[MAX_LEN];
@@ -117,7 +119,7 @@ stmt: assignment_stmt
     | break_stmt
     | stmt_block
 
-assignment_stmt: ID '=' expression ';' { /*todo: compare types*/  }
+assignment_stmt: ID '=' expression ';' { assignValue($1, $3); }
 
 input_stmt: INPUT '(' ID ')' ';'
 
@@ -186,14 +188,13 @@ void insert(char name[MAX_LEN], enum e_varType varType) {
 	
 	// TODO: check if var already defined before inserting
 	
-	struct s_symbol newSymbol = newNode->symbol;
-	strcpy(newSymbol.name, name);
-	newSymbol.type = varType;
+	strcpy(newNode->symbol.name, name);
+	newNode->symbol.type = varType;
 	
 	newNode->next = g_symbolTableHead;
 	g_symbolTableHead = newNode;
 	
-	printf("symbol inserted to table: %s, type #%d\n", name, varType);
+	printf("symbol inserted to table: %s, type #%d\n", newNode->symbol.name, varType);
 }
 
 void yyerror (const char *s)
@@ -232,12 +233,17 @@ void freeSymbolTable() {
 	struct s_symbolTableNode* currNode = g_symbolTableHead;
 	struct s_symbolTableNode* prevNode = NULL;
 
+	printf("symbol table:");
 	while (currNode != NULL) {
+		// Print the symbol table before deleting
+		if (currNode->symbol.type == INT_T) printf("  %s=%d", currNode->symbol.name, currNode->symbol.val.ival);
+		else printf("  %s=%.1f", currNode->symbol.name, currNode->symbol.val.fval);
+		
 		prevNode = currNode;
 		currNode = currNode->next;
 		free(prevNode);
 	}
-	printf("symbol table freed\n");
+	printf("\nsymbol table freed\n");
 }
 
 void copyExpInfo(struct s_expInfo src, struct s_expInfo dest) {
@@ -334,3 +340,41 @@ void minus(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
 			res->val.fval = a.val.ival - b.val.fval;
 	}
 }
+
+void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
+	// Find the symbol
+	struct s_symbol* symbolEntry = symbolLookup(name);
+	if (symbolEntry == NULL) {
+		yyerror("id not declared");
+		return;
+	}
+	printf("symbol %s found in table\n", symbolEntry->name);
+	
+	// Assign the value
+	if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)
+		symbolEntry->val.fval = exp.val.fval;
+	else if (symbolEntry->type == INT_T && exp.type == INT_T)
+		symbolEntry->val.ival = exp.val.ival;
+	else if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)
+		symbolEntry->val.fval = exp.val.fval;
+	else if (symbolEntry->type == FLOAT_T && exp.type == INT_T)
+		symbolEntry->val.fval = (double) exp.val.ival;
+    else {
+		yyerror("assigning FLOAT value to an INT variable\n");
+		return;
+	}
+	
+	if (symbolEntry->type == INT_T) printf("value assigned: %s=%d\n", symbolEntry->name, symbolEntry->val.ival);
+	else printf("value assigned: %s=%.1f\n", symbolEntry->name, symbolEntry->val.fval);
+}
+
+struct s_symbol* symbolLookup(char name[MAX_LEN]) {
+	struct s_symbolTableNode* currNode = g_symbolTableHead;
+	while (currNode != NULL){
+		if (strcmp(currNode->symbol.name, name) == 0)
+			return &(currNode->symbol);
+		currNode = currNode->next;
+	}
+	return NULL;
+}
+	
