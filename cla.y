@@ -6,6 +6,7 @@
 
 extern int yylex (void);
 void yyerror (const char *s);
+
 void insert(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
@@ -173,10 +174,16 @@ void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 	printf("\n-----> declarations started\n");
 
 	struct s_idNode* currNode = idListHead;
+	struct s_idNode* prevNode = NULL; // pointer to a used node (to free the memory)
+
 	while (currNode != NULL) {
 		insert(currNode->name, varType);
 		printf("inserted: %s, typeEnum: %d\n", currNode->name, varType);
+
+		// Move to next node & free the memory for the prev one
+		prevNode = currNode;
 		currNode = currNode->next;
+		free(prevNode);
 	}
 
 	printf("<----- declarations ended\n");
