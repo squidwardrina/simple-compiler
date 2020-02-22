@@ -20,6 +20,7 @@ void multiply(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void divide(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void assignValue(char[], struct s_expInfo);
 struct s_symbol* symbolLookup(char[]);
+void variableToExpression(struct s_expInfo*, char[]);
 
 struct s_symbol {
 	char name[MAX_LEN];
@@ -159,7 +160,7 @@ term: term MULOP factor           { performMulop(&($$), $1, $2, $3); }
     | factor                      { copyExpInfo($$, $1); }
 
 factor: '(' expression ')'        { copyExpInfo($$, $2); }
-      | ID                        { /* todo: lookup */ $$.type = INT_T, $$.val.ival = 0;}
+      | ID                        { variableToExpression(&($$), $1); }
       | NUM                       { copyExpInfo($$, $1); }
 
 %%
@@ -377,4 +378,19 @@ struct s_symbol* symbolLookup(char name[MAX_LEN]) {
 	}
 	return NULL;
 }
+
+void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
+	// Find the symbol
+	struct s_symbol* symbol = symbolLookup(varName);
+	if (symbol == NULL) {
+		yyerror("id not declared");
+		return;
+	}
 	
+	// Set values to expression
+	dest->type = symbol->type;
+	switch (dest->type) {
+		case INT_T: dest->val.ival = symbol->val.ival; break;
+		case FLOAT_T: dest->val.fval = symbol->val.fval; break;
+	}
+}
