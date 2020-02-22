@@ -11,6 +11,7 @@ void insert(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 
+struct s_symbolTableNode* g_symbolTableHead = NULL;
 }
 
 %code requires {
@@ -32,6 +33,16 @@ void insertVarsToTable(enum e_varType, struct s_idNode*);
 	};
 	struct s_idList {
 		struct s_idNode* idlistHead;
+	};
+
+	struct s_symbol {
+		char name[MAX_LEN];
+		enum e_varType type;
+		union u_numval val;
+	};
+	struct s_symbolTableNode {
+		struct s_symbol symbol;
+		struct s_symbolTableNode* next;
 	};
 }
 
@@ -67,7 +78,7 @@ void insertVarsToTable(enum e_varType, struct s_idNode*);
 
 %%
 
-program: declarations stmt_block
+program: declarations stmt_block { /*todo: free the symbol table*/ }
 
 declarations: declarations declaration
             | /* empty */
@@ -153,7 +164,21 @@ int main (int argc, char **argv)
   return 0;
 }
 
-void insert(char name[MAX_LEN], enum e_varType varType) {}
+void insert(char name[MAX_LEN], enum e_varType varType) {
+	struct s_symbolTableNode* newNode = 
+		(struct s_symbolTableNode*) malloc(sizeof(struct s_symbolTableNode));
+	
+	// TODO: check if var already defined before inserting
+	
+	struct s_symbol newSymbol = newNode->symbol;
+	strcpy(newSymbol.name, name);
+	newSymbol.type = varType;
+	
+	newNode->next = g_symbolTableHead;
+	g_symbolTableHead = newNode;
+	
+	printf("symbol inserted to table: %s, type #%d\n", name, varType);
+}
 
 void yyerror (const char *s)
 {
@@ -166,19 +191,17 @@ struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
 		(struct s_idNode*) malloc(sizeof(struct s_idNode));
     strcpy(head->name, name);
     head->next = next;
-	printf("Name node added to list: %s, next: %p\n", name, next);
 	return head;
 }
 
 void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
-	printf("\n-----> declarations started\n");
+	printf("-----> declaration started\n");
 
 	struct s_idNode* currNode = idListHead;
 	struct s_idNode* prevNode = NULL; // pointer to a used node (to free the memory)
 
 	while (currNode != NULL) {
 		insert(currNode->name, varType);
-		printf("inserted: %s, typeEnum: %d\n", currNode->name, varType);
 
 		// Move to next node & free the memory for the prev one
 		prevNode = currNode;
@@ -186,5 +209,5 @@ void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 		free(prevNode);
 	}
 
-	printf("<----- declarations ended\n");
+	printf("<----- declaration ended\n");
 }
