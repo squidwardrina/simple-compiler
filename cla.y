@@ -12,7 +12,17 @@ struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 void freeSymbolTable();
 
-struct s_symbolTableNode* g_symbolTableHead = NULL;
+struct s_symbol {
+	char name[MAX_LEN];
+	enum e_varType type;
+	union u_numval val;
+};
+struct s_symbolTableNode {
+	struct s_symbol symbol;
+	struct s_symbolTableNode* next;
+};
+struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, but first things first
+
 }
 
 %code requires {
@@ -35,16 +45,12 @@ struct s_symbolTableNode* g_symbolTableHead = NULL;
 	struct s_idList {
 		struct s_idNode* idlistHead;
 	};
-
-	struct s_symbol {
-		char name[MAX_LEN];
+	
+	struct s_expInfo {
 		enum e_varType type;
 		union u_numval val;
 	};
-	struct s_symbolTableNode {
-		struct s_symbol symbol;
-		struct s_symbolTableNode* next;
-	};
+
 }
 
 %union {
@@ -55,9 +61,10 @@ struct s_symbolTableNode* g_symbolTableHead = NULL;
    enum e_addopType addopType;
    enum e_mulopType mulopType;
 
-   enum e_varType varType; // todo: can be moved to code requires?
+   enum e_varType varType;
 
    struct s_idList idList;
+   struct s_expInfo expInfo;
 }
 
 %token <sval> UNRECOGNIZED_TOKEN
@@ -69,7 +76,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL;
 %left <relopType> RELOP
 %left <addopType> ADDOP
 %left <mulopType> MULOP
-%left <nval> NUM
+%left <expInfo> NUM
 %left <sval> ID
 
 %type <varType> type
@@ -81,7 +88,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL;
 
 program: declarations stmt_block { freeSymbolTable(); }
 
-declarations: declarations declaration
+declarations: declarations declaration { printf("\n-- declarations ended --\n\n"); }
             | /* empty */
 
 declaration: idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
