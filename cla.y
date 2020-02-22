@@ -97,10 +97,10 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 
 %%
 
-program: declarations stmt_block { freeSymbolTable(); }
+program: declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); }
 
-declarations: declarations declaration { printf("\n-- declarations ended --\n\n"); }
-            | /* empty */
+declarations: declarations declaration
+            | /* empty */ 
 
 declaration: idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
 
@@ -213,8 +213,6 @@ struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
 }
 
 void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
-	printf("-----> declaration started\n");
-
 	struct s_idNode* currNode = idListHead;
 	struct s_idNode* prevNode = NULL; // pointer to a used node (to free the memory)
 
@@ -226,15 +224,13 @@ void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 		currNode = currNode->next;
 		free(prevNode);
 	}
-
-	printf("<----- declaration ended\n");
 }
 
 void freeSymbolTable() {
 	struct s_symbolTableNode* currNode = g_symbolTableHead;
 	struct s_symbolTableNode* prevNode = NULL;
 
-	printf("symbol table:");
+	printf("\n---------------\nsymbol table:");
 	while (currNode != NULL) {
 		// Print the symbol table before deleting
 		if (currNode->symbol.type == INT_T) printf("  %s=%d", currNode->symbol.name, currNode->symbol.val.ival);
