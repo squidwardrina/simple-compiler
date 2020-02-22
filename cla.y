@@ -6,61 +6,61 @@
 
 extern int yylex (void);
 void yyerror (const char *s);
-void insert(char name[MAX_LEN], enum Var_t varType);
-struct NameList_t* createNewNameNode(char *name, struct NameList_t *next);
-void insertVarsToTable(enum Var_t varType, struct NameList_t *namesListHead);
+void insert(char[], enum e_varType);
+struct s_idNode* createIdNode(char*, struct s_idNode*);
+void insertVarsToTable(enum e_varType, struct s_idNode*);
 
 }
 
 %code requires {
 	#define MAX_LEN 8
-	
-    union nval_t {
+
+    union u_numval {
          int ival;
-         double fval; 
+         double fval;
     };
-	enum Relop_t {EQ, NE, GT, LT, GE, LE};
-	enum Addop_t {PLUS, MINUS};
-	enum Mulop_t {MUL, DIV};
-	
-	enum Var_t   {INT_T, FLOAT_T};
-	
-	struct NameList_t {
+	enum e_relopType {EQ, NE, GT, LT, GE, LE};
+	enum e_addopType {PLUS, MINUS};
+	enum e_mulopType {MUL, DIV};
+
+	enum e_varType   {INT_T, FLOAT_T};
+
+	struct s_idNode {
 		char name[MAX_LEN];
-		struct NameList_t* next;
+		struct s_idNode* next;
 	};
-	struct NameNode_t {
-		struct NameList_t* nameList;
+	struct s_idList {
+		struct s_idNode* idlistHead;
 	};
 }
 
 %union {
-   union nval_t nval;
+   union u_numval nval;
    char sval[MAX_LEN];
-   
-   enum Relop_t relop_t;
-   enum Addop_t addop_t;
-   enum Mulop_t mulop_t;
 
-   enum Var_t varType; // todo: can be moved to code requires?
-   
-   struct NameNode_t nameNode;
+   enum e_relopType relopType;
+   enum e_addopType addopType;
+   enum e_mulopType mulopType;
+
+   enum e_varType varType; // todo: can be moved to code requires?
+
+   struct s_idList idList;
 }
- 
+
 %token <sval> UNRECOGNIZED_TOKEN
 %left IF ELSE WHILE INT FLOAT INPUT OUTPUT
 %left SWITCH CASE BREAK DEFAULT STATIC_CAST
-%left OR 
-%left AND 
-%left NOT 
-%left <relop_t> RELOP 
-%left <addop_t> ADDOP
-%left <mulop_t> MULOP
+%left OR
+%left AND
+%left NOT
+%left <relopType> RELOP
+%left <addopType> ADDOP
+%left <mulopType> MULOP
 %left <nval> NUM
 %left <sval> ID
 
 %type <varType> type
-%type <nameNode> idlist
+%type <idList> idlist
 
 %error-verbose
 
@@ -71,13 +71,13 @@ program: declarations stmt_block
 declarations: declarations declaration
             | /* empty */
 
-declaration: idlist ':' type ';' { insertVarsToTable($3, $1.nameList); }
+declaration: idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
 
-type: INT                        { $$ = INT_T; } 
+type: INT                        { $$ = INT_T; }
     | FLOAT                      { $$ = FLOAT_T; }
 
-idlist: idlist ',' ID            { $$.nameList = createNewNameNode($3, $1.nameList); } 
-      | ID                       { $$.nameList = createNewNameNode($1, NULL); } 
+idlist: idlist ',' ID            { $$.idlistHead = createIdNode($3, $1.idlistHead); }
+      | ID                       { $$.idlistHead = createIdNode($1, NULL); }
 
 stmt: assignment_stmt
     | input_stmt
@@ -147,12 +147,12 @@ int main (int argc, char **argv)
 	   return 2;
   }
   yyparse ();
-  
+
   fclose (yyin);
   return 0;
 }
 
-void insert(char name[MAX_LEN], enum Var_t varType) {}
+void insert(char name[MAX_LEN], enum e_varType varType) {}
 
 void yyerror (const char *s)
 {
@@ -160,24 +160,24 @@ void yyerror (const char *s)
   fprintf (stderr, "line %d: %s\n", line, s);
 }
 
-struct NameList_t* createNewNameNode(char *name, struct NameList_t *next) { 
-    struct NameList_t* nameList = 
-		(struct NameList_t*) malloc(sizeof(struct NameNode_t)); 
-    strcpy(nameList->name, name);
-    nameList->next = next;
+struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
+    struct s_idNode* head =
+		(struct s_idNode*) malloc(sizeof(struct s_idNode));
+    strcpy(head->name, name);
+    head->next = next;
 	printf("Name node added to list: %s, next: %p\n", name, next);
-	return nameList;
-} 
+	return head;
+}
 
-void insertVarsToTable(enum Var_t varType, struct NameList_t *namesListHead) {
+void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 	printf("\n-----> declarations started\n");
-	
-	struct NameList_t* currName = namesListHead;       
-	while (currName != NULL) {
-		insert(currName->name, varType);
-		printf("inserted: %s, typeEnum: %d\n", currName->name, varType);
-		currName = currName->next;
+
+	struct s_idNode* currNode = idListHead;
+	while (currNode != NULL) {
+		insert(currNode->name, varType);
+		printf("inserted: %s, typeEnum: %d\n", currNode->name, varType);
+		currNode = currNode->next;
 	}
-	
+
 	printf("<----- declarations ended\n");
 }

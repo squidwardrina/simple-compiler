@@ -34,18 +34,18 @@ case                        { return CASE; }
 break                       { return BREAK; }
 default                     { return DEFAULT; }
 
-"=="                        { yylval.relop_t = EQ; return RELOP; } 
-"!="                        { yylval.relop_t = NE; return RELOP; } 
-"<"                         { yylval.relop_t = LT; return RELOP; } 
-">"                         { yylval.relop_t = GT; return RELOP; } 
-"<="                        { yylval.relop_t = LE; return RELOP; }
-">="                        { yylval.relop_t = GE; return RELOP; } 
+"=="                        { yylval.relopType = EQ; return RELOP; } 
+"!="                        { yylval.relopType = NE; return RELOP; } 
+"<"                         { yylval.relopType = LT; return RELOP; } 
+">"                         { yylval.relopType = GT; return RELOP; } 
+"<="                        { yylval.relopType = LE; return RELOP; }
+">="                        { yylval.relopType = GE; return RELOP; } 
 
-"+"                         { yylval.addop_t = PLUS; return ADDOP; }
-"-"                         { yylval.addop_t = MINUS; return ADDOP; }
+"+"                         { yylval.addopType = PLUS; return ADDOP; }
+"-"                         { yylval.addopType = MINUS; return ADDOP; }
 
-"*"                         { yylval.mulop_t = MUL;  return MULOP; }
-"/"                         { yylval.mulop_t = DIV;  return MULOP; }
+"*"                         { yylval.mulopType = MUL;  return MULOP; }
+"/"                         { yylval.mulopType = DIV;  return MULOP; }
 
 "||"                        { return OR; }
 "&&"                        { return AND; }
