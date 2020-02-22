@@ -10,6 +10,7 @@ void yyerror (const char *s);
 void insert(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
+void freeSymbolTable();
 
 struct s_symbolTableNode* g_symbolTableHead = NULL;
 }
@@ -78,7 +79,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL;
 
 %%
 
-program: declarations stmt_block { /*todo: free the symbol table*/ }
+program: declarations stmt_block { freeSymbolTable(); }
 
 declarations: declarations declaration
             | /* empty */
@@ -210,4 +211,16 @@ void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 	}
 
 	printf("<----- declaration ended\n");
+}
+
+void freeSymbolTable() {
+	struct s_symbolTableNode* currNode = g_symbolTableHead;
+	struct s_symbolTableNode* prevNode = NULL;
+
+	while (currNode != NULL) {
+		prevNode = currNode;
+		currNode = currNode->next;
+		free(prevNode);
+	}
+	printf("symbol table freed\n");
 }
