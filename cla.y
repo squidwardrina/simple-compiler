@@ -16,6 +16,7 @@ extern FILE *yyout;
 
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
+void generateCommand(char[], char[]);
 
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
 void varToExp(struct s_expInfo*, char[]);
@@ -118,7 +119,7 @@ struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would
 
 %%
 
-program     : declarations stmt_block
+program     : declarations stmt_block { generateCommand("HALT", ""); }
 
 declarations: declarations declaration
             | /* empty */ 
@@ -174,7 +175,7 @@ boolterm    : boolterm AND boolfactor
             | boolfactor
 
 boolfactor  : NOT '(' boolexpr ')'
-            | expression RELOP expression
+            | expression RELOP expression  { ; }
 
 expression  : expression ADDOP term        { addopCommand(&($$), $1, $2, $3); }
             | term                         { copyExpInfo($$, $1); }
