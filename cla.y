@@ -125,7 +125,6 @@ declarations: declarations declaration
 
 declaration : idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
 			| error ';'
-			| error '{'
 
 type        : INT                 { $$ = INT_T; }
             | FLOAT               { $$ = FLOAT_T; }
