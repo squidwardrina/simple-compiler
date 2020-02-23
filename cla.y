@@ -29,6 +29,7 @@ void inputCommand(char[]);
 void oututCommand(struct s_expInfo);
 void castCommand(char[], enum e_varType, struct s_expInfo);
 void relopCommand(char[], struct s_expInfo, enum e_relopType, struct s_expInfo);
+void notCommand(char[], char[]);
 
 void freeSymbolTable();
 void freeAndSaveGeneratedCode(int, char*);
@@ -172,13 +173,13 @@ stmt_block  : '{' stmtlist '}'
 stmtlist    : stmtlist stmt
             | /* empty */
 
-boolexpr    : boolexpr OR boolterm
-            | boolterm
+boolexpr    : boolexpr OR boolterm		   { strcpy($$, $1); } // todo: OR
+            | boolterm					   { strcpy($$, $1); }
 
-boolterm    : boolterm AND boolfactor
-            | boolfactor
+boolterm    : boolterm AND boolfactor	   { strcpy($$, $1); } // todo: AND
+            | boolfactor				   { strcpy($$, $1); }
 
-boolfactor  : NOT '(' boolexpr ')'         { strcpy($$, $3); } //todo: NOT
+boolfactor  : NOT '(' boolexpr ')'         { notCommand($$, $3); }
             | expression RELOP expression  { relopCommand($$, $1, $2, $3); }
 
 expression  : expression ADDOP term        { addopCommand(&($$), $1, $2, $3); }
@@ -555,4 +556,11 @@ void relopCommand(char dest[MAX_LEN], struct s_expInfo exp1,
 		sprintf(command, "IGRT %s %s 0", dest, helpVar);
 		generateCommand(command, "");
 	}
+}
+
+void notCommand(char dest[MAX_LEN], char src[MAX_LEN]) {
+	newTempId(dest, INT_T);
+	char command[COMMAND_LEN];
+	sprintf(command, "IEQL %s %s 0", dest, src); // dest = (src == false)
+	generateCommand(command, "");
 }
