@@ -30,6 +30,8 @@ void oututCommand(struct s_expInfo);
 void castCommand(char[], enum e_varType, struct s_expInfo);
 void relopCommand(char[], struct s_expInfo, enum e_relopType, struct s_expInfo);
 void notCommand(char[], char[]);
+void andCommand(char[], char[], char[]);
+void orCommand(char[], char[], char[]);
 
 void freeSymbolTable();
 void freeAndSaveGeneratedCode(int, char*);
@@ -173,10 +175,10 @@ stmt_block  : '{' stmtlist '}'
 stmtlist    : stmtlist stmt
             | /* empty */
 
-boolexpr    : boolexpr OR boolterm		   { strcpy($$, $1); } // todo: OR
+boolexpr    : boolexpr OR boolterm		   { orCommand($$, $1, $3); }
             | boolterm					   { strcpy($$, $1); }
 
-boolterm    : boolterm AND boolfactor	   { strcpy($$, $1); } // todo: AND
+boolterm    : boolterm AND boolfactor	   { andCommand($$, $1, $3); }
             | boolfactor				   { strcpy($$, $1); }
 
 boolfactor  : NOT '(' boolexpr ')'         { notCommand($$, $3); }
@@ -562,5 +564,28 @@ void notCommand(char dest[MAX_LEN], char src[MAX_LEN]) {
 	newTempId(dest, INT_T);
 	char command[COMMAND_LEN];
 	sprintf(command, "IEQL %s %s 0", dest, src); // dest = (src == false)
+	generateCommand(command, "");
+}
+
+
+void andCommand(char* dest, char* a, char* b) {
+	newTempId(dest, INT_T);
+	char command[COMMAND_LEN];
+	
+	// dest = ((a + b) == 2)
+	sprintf(command, "IADD %s %s %s", dest, a, b);
+	generateCommand(command, "");
+	sprintf(command, "IEQL %s %s 2", dest, dest);
+	generateCommand(command, "");
+}
+
+void orCommand(char* dest, char* a, char* b) {
+	newTempId(dest, INT_T);
+	char command[COMMAND_LEN];
+	
+	// dest = ((a + b) > 0)
+	sprintf(command, "IADD %s %s %s", dest, a, b);
+	generateCommand(command, "");
+	sprintf(command, "IGRT %s %s 0", dest, dest);
 	generateCommand(command, "");
 }
