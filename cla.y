@@ -36,6 +36,7 @@ void generateCommand(char[], char[]);
 void newTempId(char[], enum e_varType);
 void inputCommand(char[]);
 void oututCommand(struct s_expInfo);
+void staticCast(char[], enum e_varType, struct s_expInfo);
 
 // Symbol table stuff
 struct s_symbol {
@@ -153,7 +154,7 @@ input_stmt  : INPUT '(' ID ')' ';'          { inputCommand($3); }
 
 output_stmt : OUTPUT '(' expression ')' ';' { oututCommand($3); }
 
-cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';'
+cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';' { staticCast($1, $5, $8); }
 
 if_stmt     : IF '(' boolexpr ')' stmt ELSE stmt
 
@@ -356,32 +357,6 @@ void performAddop(struct s_expInfo* res, struct s_expInfo a,
 	performOp(res, a, opStr, b);
 }
 
-void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
-	// Find the symbol
-	struct s_symbol* symbolEntry = symbolLookup(name);
-	if (symbolEntry == NULL) {
-		yyerror("id not declared");
-		return;
-	}
-	printf("symbol %s found in table\n", symbolEntry->name);
-
-	char commandName[5];
-	char command[COMMAND_LEN];
-	
-	if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)  // float <- float
-		strcpy(commandName, "RASN");
-	else if (symbolEntry->type == INT_T && exp.type == INT_T)  // int <- int
-		strcpy(commandName,"IASN");
-	else if (symbolEntry->type == FLOAT_T && exp.type == INT_T)  // float <- int
-		strcpy(commandName,"ITOR");
-    else {
-		yyerror("assigning FLOAT value to an INT variable\n");
-		return;
-	}
-	sprintf(command, "%s %s %s", commandName, symbolEntry->name, exp.resVarName);
-	generateCommand(command, "");
-}
-
 struct s_symbol* symbolLookup(char name[MAX_LEN]) {
 	struct s_symbolTableNode* currNode = g_symbolTableHead;
 	while (currNode != NULL){
@@ -392,13 +367,35 @@ struct s_symbol* symbolLookup(char name[MAX_LEN]) {
 	return NULL;
 }
 
-void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
-	// Find the symbol
-	struct s_symbol* symbol = symbolLookup(varName);
-	if (symbol == NULL) {
+struct s_symbol* symbolLookupWithAssert(char name[MAX_LEN]) {
+	struct s_symbol* symbol = symbolLookup(name);
+	if (symbol == NULL)
 		yyerror("id not declared");
+	return symbol;
+}
+
+void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
+	struct s_symbol* symbol = symbolLookupWithAssert(name);
+	
+	char commandName[5];
+	char command[COMMAND_LEN];
+	
+	if (symbol->type == FLOAT_T && exp.type == FLOAT_T)  // float <- float
+		strcpy(commandName, "RASN");
+	else if (symbol->type == INT_T && exp.type == INT_T)  // int <- int
+		strcpy(commandName,"IASN");
+	else if (symbol->type == FLOAT_T && exp.type == INT_T)  // float <- int
+		strcpy(commandName,"ITOR");
+    else {
+		yyerror("assigning FLOAT value to an INT variable\n");
 		return;
 	}
+	sprintf(command, "%s %s %s", commandName, symbol->name, exp.resVarName);
+	generateCommand(command, "");
+}
+
+void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
+	struct s_symbol* symbol = symbolLookupWithAssert(varName);
 
 	// Set values to expression
 	dest->type = symbol->type;
@@ -460,12 +457,7 @@ void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
 }
 
 void inputCommand(char varName[MAX_LEN]) {
-	// Find the symbol
-	struct s_symbol* symbol = symbolLookup(varName);
-	if (symbol == NULL) {
-		yyerror("id not declared");
-		return;
-	}
+	struct s_symbol* symbol = symbolLookupWithAssert(varName);
 	
 	// Generate command
 	char command[COMMAND_LEN];
@@ -477,4 +469,22 @@ void oututCommand(struct s_expInfo exp) {
 	char command[COMMAND_LEN];
 	sprintf(command, "%cPRT %s", prefixChar(exp.type), exp.resVarName);
 	generateCommand(command, "");
+}
+
+void staticCast(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo exp) {
+	struct s_symbol* symbol = symbolLookupWithAssert(varName);
+    if (symbol->type != toType) {
+		yyerror("casting type differs from variable type");
+		return;
+	}
+	
+	char commandName[5];
+	if (toType == INT_T && exp.type == INT_T) strcpy(commandName, "IASN");
+	else if (toType == INT_T && exp.type == FLOAT_T) strcpy(commandName, "RTOI");
+	else if (toType == FLOAT_T && exp.type == INT_T) strcpy(commandName, "ITOR");
+	else strcpy(commandName, "RASN");
+	
+	char command[COMMAND_LEN];
+	sprintf(command, "%s %s %s", commandName, varName, exp.resVarName);
+	generateCommand(command, "");	
 }
