@@ -56,7 +56,7 @@ default                     { return DEFAULT; }
 ";"                         |
 "="                         { return yytext[0]; }
 
-{LETTER}{ALNUM}{0,8}        { strcpy(yylval.sval, yytext); return ID; }
+{LETTER}{ALNUM}{0,9}        { strcpy(yylval.sval, yytext); return ID; }
 
 {DIGIT}+                    { yylval.numInfo.type = INT_T; yylval.numInfo.val.ival = atoi(yytext); return NUM; }
 {DIGIT}+\.{DIGIT}+          { yylval.numInfo.type = FLOAT_T; yylval.numInfo.val.fval = atof(yytext); return NUM; }
@@ -69,7 +69,7 @@ default                     { return DEFAULT; }
 
 <INITIAL,COMMENT>\n         { line++; }
 
-{LETTER}{ALNUM}{9,}         |
+{LETTER}{ALNUM}{10,}        |
 {DIGIT}+{LETTER}{ALNUM}*    |
 .                           { strncpy(yylval.sval, yytext, MAX_LEN - 1); return UNRECOGNIZED_TOKEN; }
 

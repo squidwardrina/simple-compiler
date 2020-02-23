@@ -54,7 +54,7 @@ struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would
 }
 
 %code requires {
-	#define MAX_LEN 8
+	#define MAX_LEN 10
 
     union u_numval {
          int ival;
