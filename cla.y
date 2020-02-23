@@ -118,12 +118,14 @@ struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would
 
 %%
 
-program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block
+program     : declarations stmt_block
 
 declarations: declarations declaration
             | /* empty */ 
 
 declaration : idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
+			| error ';'
+			| error '{'
 
 type        : INT                 { $$ = INT_T; }
             | FLOAT               { $$ = FLOAT_T; }
@@ -140,6 +142,7 @@ stmt        : assignment_stmt
             | switch_stmt
             | break_stmt
             | stmt_block
+			| error ';'
 
 assignment_stmt : ID '=' expression ';'     { assignCommand($1, $3); }
 
