@@ -10,33 +10,26 @@
 #define SIGNATURE           "\nRina Fridland\n"
 #define COMMAND_LEN         100
 
-
 extern int yylex (void);
 void yyerror (const char *s);
 extern FILE *yyout;
 
-void createOutFileName(char*, char*);
-void insertVarToTable(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
-void freeSymbolTable();
-void freeAndSaveGeneratedCode(int, char*);
+
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
-void performAddop(struct s_expInfo*, struct s_expInfo, enum e_addopType,struct s_expInfo);
-void performMulop(struct s_expInfo*, struct s_expInfo, enum e_mulopType,struct s_expInfo);
-void plus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
-void minus(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
-void multiply(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
-void divide(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
-void assignValue(char[], struct s_expInfo);
-struct s_symbol* symbolLookup(char[]);
-void variableToExpression(struct s_expInfo*, char[]);
-void numberToExpression(struct s_expInfo*, struct s_numInfo*);
-void generateCommand(char[], char[]);
-void newTempId(char[], enum e_varType);
+void varToExp(struct s_expInfo*, char[]);
+void numToExp(struct s_expInfo*, struct s_numInfo*);
+
+void addopCommand(struct s_expInfo*, struct s_expInfo, enum e_addopType,struct s_expInfo);
+void mulopCommand(struct s_expInfo*, struct s_expInfo, enum e_mulopType,struct s_expInfo);
+void assignCommand(char[], struct s_expInfo);
 void inputCommand(char[]);
 void oututCommand(struct s_expInfo);
-void staticCast(char[], enum e_varType, struct s_expInfo);
+void castCommand(char[], enum e_varType, struct s_expInfo);
+
+void freeSymbolTable();
+void freeAndSaveGeneratedCode(int, char*);
 
 // Symbol table stuff
 struct s_symbol {
@@ -148,13 +141,13 @@ stmt        : assignment_stmt
             | break_stmt
             | stmt_block
 
-assignment_stmt : ID '=' expression ';'     { assignValue($1, $3); }
+assignment_stmt : ID '=' expression ';'     { assignCommand($1, $3); }
 
 input_stmt  : INPUT '(' ID ')' ';'          { inputCommand($3); }
 
 output_stmt : OUTPUT '(' expression ')' ';' { oututCommand($3); }
 
-cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';' { staticCast($1, $5, $8); }
+cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';' { castCommand($1, $5, $8); }
 
 if_stmt     : IF '(' boolexpr ')' stmt ELSE stmt
 
@@ -181,17 +174,24 @@ boolterm    : boolterm AND boolfactor
 boolfactor  : NOT '(' boolexpr ')'
             | expression RELOP expression
 
-expression  : expression ADDOP term        { performAddop(&($$), $1, $2, $3); }
+expression  : expression ADDOP term        { addopCommand(&($$), $1, $2, $3); }
             | term                         { copyExpInfo($$, $1); }
 
-term        : term MULOP factor            { performMulop(&($$), $1, $2, $3); }
+term        : term MULOP factor            { mulopCommand(&($$), $1, $2, $3); }
             | factor                       { copyExpInfo($$, $1); }
 
 factor      : '(' expression ')'           { copyExpInfo($$, $2); }
-            | ID                           { variableToExpression(&($$), $1); }
-            | NUM                          { numberToExpression(&($$), &($1)); }
+            | ID                           { varToExp(&($$), $1); }
+            | NUM                          { numToExp(&($$), &($1)); }
 
 %%
+
+void createOutFileName(char* inFileName, char* outFileName) {
+   int filenameLen = strlen(inFileName) - strlen(IN_FILE_TYPE);
+   memcpy(outFileName, inFileName, filenameLen);
+   outFileName[filenameLen] = '\0';
+   strcat(outFileName, OUT_FILE_TYPE);
+}
 
 int main (int argc, char **argv) {
     extern FILE *yyin;
@@ -217,13 +217,6 @@ int main (int argc, char **argv) {
     return 0;
 }
 
-void createOutFileName(char* inFileName, char* outFileName) {
-   int filenameLen = strlen(inFileName) - strlen(IN_FILE_TYPE);
-   memcpy(outFileName, inFileName, filenameLen);
-   outFileName[filenameLen] = '\0';
-   strcat(outFileName, OUT_FILE_TYPE);
-}
-
 void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
 	struct s_symbolTableNode* newNode = 
 		(struct s_symbolTableNode*) malloc(sizeof(struct s_symbolTableNode));
@@ -243,6 +236,42 @@ void yyerror(const char *s) {
 	extern int line;
 	fprintf (stderr, "line %d: %s\n", line, s);
 	g_generateCode = 0; // stop generating code
+}
+
+void newTempId(char name[MAX_LEN], enum e_varType type) {
+	// Create new var name
+	static int id = 1;
+	sprintf(name, "t%d", id);
+	insertVarToTable(name, type);
+	id++;
+}
+
+void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
+	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
+	
+	// Don't generate code if flag is off
+	if (!g_generateCode) 
+		return;
+	
+	// Create the new command node
+	struct s_generatedCommandNode* newNode = 
+		(struct s_generatedCommandNode*) malloc(sizeof(struct s_generatedCommandNode));
+	strcpy(newNode->command, command);
+	strcpy(newNode->jumpFlagName, jumpFlagName);
+	newNode->next = NULL;
+
+    // Add to commands list
+	if (g_generatedCommandsHead == NULL) 
+		g_generatedCommandsHead = newNode; // add as first command
+	else 
+		lastNode->next = newNode; // add after latest command
+	
+	lastNode = newNode; // this is the last command now
+	
+	printf("-------------------------------------------------> command generated: %s", newNode->command);
+	if(jumpFlagName[0] != '\0')
+		printf(", jumpFlagName: %s", newNode->jumpFlagName);
+	printf("\n");
 }
 
 struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
@@ -323,8 +352,8 @@ void copyExpInfo(struct s_expInfo src, struct s_expInfo dest) {
 	strcpy(dest.resVarName, src.resVarName);
 }
 
-void performOp(struct s_expInfo* res,struct s_expInfo a,
-			   char* opStr, struct s_expInfo b) {
+void anyopCommand(struct s_expInfo* res,struct s_expInfo a,
+			      char* opStr, struct s_expInfo b) {
 	// Check the type of the result
 	char command[COMMAND_LEN];
 	char prefix;
@@ -344,7 +373,7 @@ void performOp(struct s_expInfo* res,struct s_expInfo a,
 	generateCommand(command, "");
 }
 
-void performMulop(struct s_expInfo* res, 
+void mulopCommand(struct s_expInfo* res, 
                   struct s_expInfo a, 
                   enum e_mulopType opType,
                   struct s_expInfo b) {
@@ -354,10 +383,10 @@ void performMulop(struct s_expInfo* res,
 		case MUL: stpcpy(opStr, "MLT"); break;
 		case DIV: stpcpy(opStr, "DIV"); break;
 	}
-	performOp(res, a, opStr, b);
+	anyopCommand(res, a, opStr, b);
 }
 
-void performAddop(struct s_expInfo* res, struct s_expInfo a, 
+void addopCommand(struct s_expInfo* res, struct s_expInfo a, 
                   enum e_addopType opType, struct s_expInfo b) { // todo: merge e_addopType and e_mulopType
 	// Save command name to string
 	char opStr[4];
@@ -365,7 +394,7 @@ void performAddop(struct s_expInfo* res, struct s_expInfo a,
 		case MUL: stpcpy(opStr, "ADD"); break;
 		case DIV: stpcpy(opStr, "SUB"); break;
 	}
-	performOp(res, a, opStr, b);
+	anyopCommand(res, a, opStr, b);
 }
 
 struct s_symbol* symbolLookup(char name[MAX_LEN]) {
@@ -385,7 +414,7 @@ struct s_symbol* symbolLookupWithAssert(char name[MAX_LEN]) {
 	return symbol;
 }
 
-void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
+void assignCommand(char name[MAX_LEN], struct s_expInfo exp) {
 	struct s_symbol* symbol = symbolLookupWithAssert(name);
 	
 	char commandName[5];
@@ -405,7 +434,7 @@ void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
 	generateCommand(command, "");
 }
 
-void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
+void varToExp(struct s_expInfo* dest, char varName[MAX_LEN]) {
 	struct s_symbol* symbol = symbolLookupWithAssert(varName);
 
 	// Set values to expression
@@ -413,7 +442,7 @@ void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
 	strcpy(dest->resVarName, varName);
 }
 
-void numberToExpression(struct s_expInfo* dest, struct s_numInfo* numInfo) {
+void numToExp(struct s_expInfo* dest, struct s_numInfo* numInfo) {
 	// Create temp var for the expression
 	char varName[MAX_LEN];
 	newTempId(varName, numInfo->type);
@@ -431,42 +460,6 @@ void numberToExpression(struct s_expInfo* dest, struct s_numInfo* numInfo) {
 	generateCommand(command, "");
 }
 
-void newTempId(char name[MAX_LEN], enum e_varType type) {
-	// Create new var name
-	static int id = 1;
-	sprintf(name, "t%d", id);
-	insertVarToTable(name, type);
-	id++;
-}
-
-void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
-	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
-	
-	// Don't generate code if flag is off
-	if (!g_generateCode) 
-		return;
-	
-	// Create the new command node
-	struct s_generatedCommandNode* newNode = 
-		(struct s_generatedCommandNode*) malloc(sizeof(struct s_generatedCommandNode));
-	strcpy(newNode->command, command);
-	strcpy(newNode->jumpFlagName, jumpFlagName);
-	newNode->next = NULL;
-
-    // Add to commands list
-	if (g_generatedCommandsHead == NULL) 
-		g_generatedCommandsHead = newNode; // add as first command
-	else 
-		lastNode->next = newNode; // add after latest command
-	
-	lastNode = newNode; // this is the last command now
-	
-	printf("-------------------------------------------------> command generated: %s", newNode->command);
-	if(jumpFlagName[0] != '\0')
-		printf(", jumpFlagName: %s", newNode->jumpFlagName);
-	printf("\n");
-}
-
 void inputCommand(char varName[MAX_LEN]) {
 	struct s_symbol* symbol = symbolLookupWithAssert(varName);
 	
@@ -482,7 +475,7 @@ void oututCommand(struct s_expInfo exp) {
 	generateCommand(command, "");
 }
 
-void staticCast(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo exp) {
+void castCommand(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo exp) {
 	struct s_symbol* symbol = symbolLookupWithAssert(varName);
     if (symbol->type != toType) {
 		yyerror("casting type differs from variable type");
