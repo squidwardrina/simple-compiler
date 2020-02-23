@@ -34,6 +34,8 @@ void variableToExpression(struct s_expInfo*, char[]);
 void numberToExpression(struct s_expInfo*, struct s_numInfo*);
 void generateCommand(char[], char[]);
 void newTempId(char[], enum e_varType);
+void inputCommand(char[]);
+void oututCommand(struct s_expInfo);
 
 // Symbol table stuff
 struct s_symbol {
@@ -145,11 +147,11 @@ stmt        : assignment_stmt
             | break_stmt
             | stmt_block
 
-assignment_stmt : ID '=' expression ';' { assignValue($1, $3); }
+assignment_stmt : ID '=' expression ';'     { assignValue($1, $3); }
 
-input_stmt  : INPUT '(' ID ')' ';'
+input_stmt  : INPUT '(' ID ')' ';'          { inputCommand($3); }
 
-output_stmt : OUTPUT '(' expression ')' ';'
+output_stmt : OUTPUT '(' expression ')' ';' { oututCommand($3); }
 
 cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';'
 
@@ -294,6 +296,13 @@ void saveGeneratedCode() {
 		prevNode = currNode;
 		currNode = currNode->next;
 		free(prevNode);
+	}
+}
+
+char prefixChar(enum e_varType type) {
+	switch (type) {
+		case INT_T: return 'I';
+		case FLOAT_T: return 'R';
 	}
 }
 
@@ -448,4 +457,24 @@ void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
 	if(jumpFlagName[0] != '\0')
 		printf(", jumpFlagName: %s", newNode->jumpFlagName);
 	printf("\n");
+}
+
+void inputCommand(char varName[MAX_LEN]) {
+	// Find the symbol
+	struct s_symbol* symbol = symbolLookup(varName);
+	if (symbol == NULL) {
+		yyerror("id not declared");
+		return;
+	}
+	
+	// Generate command
+	char command[COMMAND_LEN];
+	sprintf(command, "%cINP %s", prefixChar(symbol->type), varName);
+	generateCommand(command, "");
+}
+
+void oututCommand(struct s_expInfo exp) {
+	char command[COMMAND_LEN];
+	sprintf(command, "%cPRT %s", prefixChar(exp.type), exp.resVarName);
+	generateCommand(command, "");
 }
