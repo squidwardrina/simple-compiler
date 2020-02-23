@@ -28,6 +28,7 @@ void assignCommand(char[], struct s_expInfo);
 void inputCommand(char[]);
 void oututCommand(struct s_expInfo);
 void castCommand(char[], enum e_varType, struct s_expInfo);
+void relopCommand(char[], struct s_expInfo, enum e_relopType, struct s_expInfo);
 
 void freeSymbolTable();
 void freeAndSaveGeneratedCode(int, char*);
@@ -51,6 +52,8 @@ struct s_generatedCommandNode {
 };
 int g_generateCode = 1; // if error found, code shouldn't be generated
 struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would be more efficient, but reallocs logic is buggy and time consuming to write
+
+enum e_bool {FALSE, TRUE};
 
 }
 
@@ -114,6 +117,7 @@ struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would
 %type <varType> type
 %type <idList> idlist
 %type <expInfo> expression term factor
+%type <sval> boolfactor boolterm boolexpr
 
 %error-verbose
 
@@ -174,8 +178,8 @@ boolexpr    : boolexpr OR boolterm
 boolterm    : boolterm AND boolfactor
             | boolfactor
 
-boolfactor  : NOT '(' boolexpr ')'
-            | expression RELOP expression  { ; }
+boolfactor  : NOT '(' boolexpr ')'         { strcpy($$, $3); } //todo: NOT
+            | expression RELOP expression  { relopCommand($$, $1, $2, $3); }
 
 expression  : expression ADDOP term        { addopCommand(&($$), $1, $2, $3); }
             | term                         { copyExpInfo($$, $1); }
@@ -242,9 +246,8 @@ void yyerror(const char *s) {
 }
 
 void newTempId(char name[MAX_LEN], enum e_varType type) {
-	// Create new var name
 	static int id = 1;
-	sprintf(name, "t%d", id);
+	sprintf(name, "t_%d", id); // guaranteed no collision, because '_' forbidden in source language
 	insertVarToTable(name, type);
 	id++;
 }
@@ -494,4 +497,46 @@ void castCommand(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo 
 	char command[COMMAND_LEN];
 	sprintf(command, "%s %s %s", commandName, varName, exp.resVarName);
 	generateCommand(command, "");	
+}
+
+void castToFloat(struct s_expInfo* exp) {
+	// Create temp var for the expression
+	char varName[MAX_LEN];
+	newTempId(varName, FLOAT_T);
+
+	// Generate cast command
+	char command[COMMAND_LEN];
+	sprintf(command, "ITOR %s %s", varName, exp->resVarName);
+	generateCommand(command, "");
+
+	// Set the new casted var name to exp
+	strcpy(exp->resVarName, varName);
+}
+
+void relopCommand(char dest[MAX_LEN], struct s_expInfo exp1, 
+                  enum e_relopType relop, struct s_expInfo exp2) {
+	// Make sure types are equal
+	if (exp1.type != exp2.type) {
+		if (exp1.type == INT_T) castToFloat(&exp1);
+		else castToFloat(&exp2);
+	}
+	char prefix = prefixChar(exp1.type);
+
+	char cmdName[4];
+	switch (relop) {
+		case EQ: strcpy(cmdName, "EQL"); break;
+		case NE: strcpy(cmdName, "NQL"); break;
+		case GE:
+		case GT: strcpy(cmdName, "GRT"); break;
+		case LE:
+		case LT: strcpy(cmdName, "LSS"); break;
+	}
+
+	char bool1Name[MAX_LEN];
+	newTempId(bool1Name, INT_T);
+	char command[COMMAND_LEN];
+	sprintf(command, "%c%s %s %s %s", prefix, cmdName, bool1Name, 
+	                                  exp1.resVarName, exp2.resVarName);
+	generateCommand(command, "");
+	strcpy(dest, bool1Name);
 }
