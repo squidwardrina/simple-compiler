@@ -245,10 +245,11 @@ void yyerror(const char *s) {
 	g_generateCode = 0; // stop generating code
 }
 
-void newTempId(char name[MAX_LEN], enum e_varType type) {
+void newTempId(char* nameBuff, enum e_varType type) {
 	static int id = 1;
-	sprintf(name, "t_%d", id); // guaranteed no collision, because '_' forbidden in source language
-	insertVarToTable(name, type);
+
+	sprintf(nameBuff, "t_%d", id); // guaranteed no collision, because '_' forbidden in source language
+	insertVarToTable(nameBuff, type);
 	id++;
 }
 
@@ -532,11 +533,26 @@ void relopCommand(char dest[MAX_LEN], struct s_expInfo exp1,
 		case LT: strcpy(cmdName, "LSS"); break;
 	}
 
-	char bool1Name[MAX_LEN];
-	newTempId(bool1Name, INT_T);
+	newTempId(dest, INT_T);
+
 	char command[COMMAND_LEN];
-	sprintf(command, "%c%s %s %s %s", prefix, cmdName, bool1Name, 
+	sprintf(command, "%c%s %s %s %s", prefix, cmdName, dest, 
 	                                  exp1.resVarName, exp2.resVarName);
 	generateCommand(command, "");
-	strcpy(dest, bool1Name);
+
+	// In case of ">=" or "<=" add another condition with OR
+	if (relop == GE || relop == LE) {
+		// Generate the "==" command
+		char helpVar[MAX_LEN];
+		newTempId(helpVar, INT_T);
+		sprintf(command, "%cEQL %s %s %s", prefix, helpVar,
+	                                       exp1.resVarName, exp2.resVarName);
+		generateCommand(command, "");
+
+		// Add the two results and check if we had at least one TRUE
+		sprintf(command, "IADD %s %s %s", helpVar, dest, helpVar);
+		generateCommand(command, "");
+		sprintf(command, "IGRT %s %s 0", dest, helpVar);
+		generateCommand(command, "");
+	}
 }
