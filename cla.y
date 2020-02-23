@@ -20,7 +20,7 @@ void insertVarToTable(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 void freeSymbolTable();
-void saveGeneratedCode();
+void freeAndSaveGeneratedCode(int, char*);
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
 void performAddop(struct s_expInfo*, struct s_expInfo, enum e_addopType,struct s_expInfo);
 void performMulop(struct s_expInfo*, struct s_expInfo, enum e_mulopType,struct s_expInfo);
@@ -125,7 +125,7 @@ struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would
 
 %%
 
-program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); saveGeneratedCode(); }
+program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block
 
 declarations: declarations declaration
             | /* empty */ 
@@ -205,19 +205,15 @@ int main (int argc, char **argv) {
 	     return 2;
     }
 
-    // Open output file
-    char outFileName[255];
-    createOutFileName(argv [1], outFileName);
-    if ((yyout = fopen(outFileName, "w")) == NULL) {
-        fprintf(stderr, "Error opening output file");
-        exit(1);
-    }
+    yyparse();
 
-    yyparse ();
+	// Free the memory and flush the code to file if needed
+	freeSymbolTable();
+	char outFileName[255];
+	createOutFileName(argv[1], outFileName);
+	freeAndSaveGeneratedCode(g_generateCode, outFileName);
 
-    fprintf(yyout, SIGNATURE);
     fclose(yyin);
-    fclose(yyout);
     return 0;
 }
 
@@ -243,10 +239,10 @@ void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
 	printf("symbol inserted to table: %s, type #%d\n", newNode->symbol.name, varType);
 }
 
-void yyerror (const char *s)
-{
-  extern int line;
-  fprintf (stderr, "line %d: %s\n", line, s);
+void yyerror(const char *s) {
+	extern int line;
+	fprintf (stderr, "line %d: %s\n", line, s);
+	g_generateCode = 0; // stop generating code
 }
 
 struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
@@ -287,16 +283,31 @@ void freeSymbolTable() {
 	printf("\nsymbol table freed\n");
 }
 
-void saveGeneratedCode() {
+void freeAndSaveGeneratedCode(int flushCodeToFile, char* outFileName) {
+	// Open output file if needed
+	if (flushCodeToFile) {
+		if ((yyout = fopen(outFileName, "w")) == NULL) {
+			fprintf(stderr, "Error opening output file");
+			exit(1);
+		}
+	}
+	
+	// Free the memory and flush to file if needed
 	struct s_generatedCommandNode* currNode = g_generatedCommandsHead;
 	struct s_generatedCommandNode* prevNode = NULL;
-	
 	while (currNode != NULL) {
-		fprintf(yyout, "%s\n", currNode->command);
+		if (flushCodeToFile) 
+			fprintf(yyout, "%s\n", currNode->command);
 		
 		prevNode = currNode;
 		currNode = currNode->next;
 		free(prevNode);
+	}	
+	
+	// Close the file if needed
+	if (flushCodeToFile) {
+		fprintf(yyout, SIGNATURE);
+		fclose(yyout);
 	}
 }
 
