@@ -58,8 +58,8 @@ default                     { return DEFAULT; }
 
 {LETTER}{ALNUM}{0,8}        { strcpy(yylval.sval, yytext); return ID; }
 
-{DIGIT}+                    { yylval.expInfo.type = INT_T; yylval.expInfo.val.ival = atoi(yytext); return NUM; }
-{DIGIT}+\.{DIGIT}+          { yylval.expInfo.type = FLOAT_T; yylval.expInfo.val.fval = atof(yytext); return NUM; }
+{DIGIT}+                    { yylval.numInfo.type = INT_T; yylval.numInfo.val.ival = atoi(yytext); return NUM; }
+{DIGIT}+\.{DIGIT}+          { yylval.numInfo.type = FLOAT_T; yylval.numInfo.val.fval = atof(yytext); return NUM; }
 
 [\t ]+                      /* skip white space */
 

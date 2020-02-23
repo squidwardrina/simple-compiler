@@ -4,19 +4,23 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
+
 #define IN_FILE_TYPE        ".ou"
 #define OUT_FILE_TYPE       ".qud"
 #define SIGNATURE           "\nRina Fridland\n"
+#define COMMAND_LEN         100
 
 
 extern int yylex (void);
 void yyerror (const char *s);
+extern FILE *yyout;
 
 void createOutFileName(char*, char*);
-void insert(char[], enum e_varType);
+void insertVarToTable(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 void freeSymbolTable();
+void saveGeneratedCode();
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
 void performAddop(struct s_expInfo*, struct s_expInfo, enum e_addopType,struct s_expInfo);
 void performMulop(struct s_expInfo*, struct s_expInfo, enum e_mulopType,struct s_expInfo);
@@ -27,17 +31,29 @@ void divide(struct s_expInfo*, struct s_expInfo, struct s_expInfo);
 void assignValue(char[], struct s_expInfo);
 struct s_symbol* symbolLookup(char[]);
 void variableToExpression(struct s_expInfo*, char[]);
+void numberToExpression(struct s_expInfo*, struct s_numInfo*);
+void generateCommand(char[], char[]);
+void newTempId(char[], enum e_varType);
 
+// Symbol table stuff
 struct s_symbol {
 	char name[MAX_LEN];
 	enum e_varType type;
-	union u_numval val;
 };
 struct s_symbolTableNode {
 	struct s_symbol symbol;
 	struct s_symbolTableNode* next;
 };
 struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, but first things first
+
+// Code generation stuff
+struct s_generatedCommandNode {
+	char command[COMMAND_LEN];
+	char jumpFlagName[10];
+	struct s_generatedCommandNode* next;
+};
+int g_generateCode = 1; // if error found, code shouldn't be generated
+struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would be more efficient, but reallocs logic is buggy and time consuming to write
 
 }
 
@@ -64,13 +80,16 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 	
 	struct s_expInfo {
 		enum e_varType type;
+		char resVarName[MAX_LEN];
+	};
+	struct s_numInfo {
+		enum e_varType type;
 		union u_numval val;
 	};
-
 }
 
 %union {
-   union u_numval nval;
+   struct s_numInfo numInfo;
    char sval[MAX_LEN];
 
    enum e_relopType relopType;
@@ -92,7 +111,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 %left <relopType> RELOP
 %left <addopType> ADDOP
 %left <mulopType> MULOP
-%left <expInfo> NUM
+%left <numInfo> NUM
 %left <sval> ID
 
 %type <varType> type
@@ -103,7 +122,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 
 %%
 
-program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); }
+program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); saveGeneratedCode(); }
 
 declarations: declarations declaration
             | /* empty */ 
@@ -167,7 +186,7 @@ term        : term MULOP factor            { performMulop(&($$), $1, $2, $3); }
 
 factor      : '(' expression ')'           { copyExpInfo($$, $2); }
             | ID                           { variableToExpression(&($$), $1); }
-            | NUM                          { copyExpInfo($$, $1); }
+            | NUM                          { numberToExpression(&($$), &($1)); }
 
 %%
 
@@ -184,7 +203,6 @@ int main (int argc, char **argv) {
     }
 
     // Open output file
-    extern FILE *yyout;
     char outFileName[255];
     createOutFileName(argv [1], outFileName);
     if ((yyout = fopen(outFileName, "w")) == NULL) {
@@ -207,7 +225,7 @@ void createOutFileName(char* inFileName, char* outFileName) {
    strcat(outFileName, OUT_FILE_TYPE);
 }
 
-void insert(char name[MAX_LEN], enum e_varType varType) {
+void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
 	struct s_symbolTableNode* newNode = 
 		(struct s_symbolTableNode*) malloc(sizeof(struct s_symbolTableNode));
 
@@ -241,7 +259,7 @@ void insertVarsToTable(enum e_varType varType, struct s_idNode *idListHead) {
 	struct s_idNode* prevNode = NULL; // pointer to a used node (to free the memory)
 
 	while (currNode != NULL) {
-		insert(currNode->name, varType);
+		insertVarToTable(currNode->name, varType);
 
 		// Move to next node & free the memory for the prev one
 		prevNode = currNode;
@@ -254,11 +272,10 @@ void freeSymbolTable() {
 	struct s_symbolTableNode* currNode = g_symbolTableHead;
 	struct s_symbolTableNode* prevNode = NULL;
 
-	printf("\n---------------\nsymbol table:");
+	printf("\n---------------\nsymbol table at the end of program:");
 	while (currNode != NULL) {
 		// Print the symbol table before deleting
-		if (currNode->symbol.type == INT_T) printf("  %s=%d", currNode->symbol.name, currNode->symbol.val.ival);
-		else printf("  %s=%.1f", currNode->symbol.name, currNode->symbol.val.fval);
+	    printf("\n\ttype #%d: %s", currNode->symbol.type, currNode->symbol.name);
 		
 		prevNode = currNode;
 		currNode = currNode->next;
@@ -267,99 +284,67 @@ void freeSymbolTable() {
 	printf("\nsymbol table freed\n");
 }
 
+void saveGeneratedCode() {
+	struct s_generatedCommandNode* currNode = g_generatedCommandsHead;
+	struct s_generatedCommandNode* prevNode = NULL;
+	
+	while (currNode != NULL) {
+		fprintf(yyout, "%s\n", currNode->command);
+		
+		prevNode = currNode;
+		currNode = currNode->next;
+		free(prevNode);
+	}
+}
+
 void copyExpInfo(struct s_expInfo src, struct s_expInfo dest) {
 	dest.type = src.type;
-	switch (dest.type) {
-		case INT_T: dest.val.ival = src.val.ival; break;
-		case FLOAT_T: dest.val.fval = src.val.fval; break;
+	strcpy(dest.resVarName, src.resVarName);
+}
+
+void performOp(struct s_expInfo* res,struct s_expInfo a,
+			   char* opStr, struct s_expInfo b) {
+	// Check the type of the result
+	char command[COMMAND_LEN];
+	char prefix;
+	if (a.type == INT_T && b.type == INT_T) {
+		res->type = INT_T;
+		newTempId(res->resVarName, INT_T);
+	    prefix = 'I';
+	} else {
+		res->type = FLOAT_T;
+		newTempId(res->resVarName, FLOAT_T);	
+	    prefix = 'R';
 	}
+	
+	// Generate the command
+	sprintf(command, "%c%s %s %s %s", prefix, opStr, res->resVarName, 
+	                                  a.resVarName, b.resVarName);	
+	generateCommand(command, "");
 }
 
 void performMulop(struct s_expInfo* res, 
                   struct s_expInfo a, 
                   enum e_mulopType opType,
                   struct s_expInfo b) {
+	// Save command name to string
+	char opStr[4];
 	switch (opType) {
-		case MUL: multiply(res, a, b); break;
-		case DIV: divide(res, a, b); break;
+		case MUL: stpcpy(opStr, "MLT"); break;
+		case DIV: stpcpy(opStr, "DIV"); break;
 	}
-	if (res->type == INT_T) printf("Performed MULOP. res = %d\n", res->val.ival);
-	else printf("Performed MULOP. res = %.1f\n", res->val.fval);
+	performOp(res, a, opStr, b);
 }
 
-void multiply(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
-	if (a.type == INT_T && b.type == INT_T) {
-		res->type = INT_T;
-		res->val.ival = a.val.ival * b.val.ival;
-	    printf("(%d) %d * (%d) %d = (%d) %d\n", a.type, a.val.ival, b.type, b.val.ival, res->type, res->val.ival); //todo: remove
-	} else {
-		res->type = FLOAT_T;
-		if (a.type == b.type == FLOAT_T)
-			res->val.fval = a.val.fval * b.val.fval;
-	    else if (a.type == FLOAT_T)
-			res->val.fval = a.val.fval * b.val.ival;
-	    else if (b.type == FLOAT_T)
-			res->val.fval = a.val.ival * b.val.fval;
-	}
-}
-
-void divide(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
-	if (a.type == INT_T && b.type == INT_T) {
-		res->type = INT_T;
-		res->val.ival = a.val.ival / b.val.ival;
-	} else {
-		res->type = FLOAT_T;
-		if (a.type == b.type == FLOAT_T)
-			res->val.fval = a.val.fval / b.val.fval;
-	    else if (a.type == FLOAT_T)
-			res->val.fval = a.val.fval / b.val.ival;
-	    else if (b.type == FLOAT_T)
-			res->val.fval = a.val.ival / b.val.fval;
-	}
-}
-
-void performAddop(struct s_expInfo* res, 
-                  struct s_expInfo a, 
-                  enum e_addopType opType,
-                  struct s_expInfo b) {
+void performAddop(struct s_expInfo* res, struct s_expInfo a, 
+                  enum e_addopType opType, struct s_expInfo b) { // todo: merge e_addopType and e_mulopType
+	// Save command name to string
+	char opStr[4];
 	switch (opType) {
-		case PLUS: plus(res, a, b); break;
-		case MINUS: minus(res, a, b); break;
+		case MUL: stpcpy(opStr, "ADD"); break;
+		case DIV: stpcpy(opStr, "SUB"); break;
 	}
-	
-	if (res->type == INT_T) printf("Performed ADDLOP. res = %d\n", res->val.ival);
-	else printf("Performed ADDLOP. res = %.1f\n", res->val.fval);
-}
-
-void plus(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
-	if (a.type == INT_T && b.type == INT_T) {
-		res->type = INT_T;
-		res->val.ival = a.val.ival + b.val.ival;
-	    printf("(%d) %d + (%d) %d = (%d) %d\n", a.type, a.val.ival, b.type, b.val.ival, res->type, res->val.ival); //todo: remove
-	} else {
-		res->type = FLOAT_T;
-		if (a.type == b.type == FLOAT_T)
-			res->val.fval = a.val.fval + b.val.fval;
-	    else if (a.type == FLOAT_T)
-			res->val.fval = a.val.fval + b.val.ival;
-	    else if (b.type == FLOAT_T)
-			res->val.fval = a.val.ival + b.val.fval;
-	}
-}
-
-void minus(struct s_expInfo* res, struct s_expInfo a, struct s_expInfo b) {
-	if (a.type == INT_T && b.type == INT_T) {
-		res->type = INT_T;
-		res->val.ival = a.val.ival - b.val.ival;
-	} else {
-		res->type = FLOAT_T;
-		if (a.type == b.type == FLOAT_T)
-			res->val.fval = a.val.fval - b.val.fval;
-	    else if (a.type == FLOAT_T)
-			res->val.fval = a.val.fval - b.val.ival;
-	    else if (b.type == FLOAT_T)
-			res->val.fval = a.val.ival - b.val.fval;
-	}
+	performOp(res, a, opStr, b);
 }
 
 void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
@@ -371,22 +356,21 @@ void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
 	}
 	printf("symbol %s found in table\n", symbolEntry->name);
 
-	// Assign the value
-	if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)
-		symbolEntry->val.fval = exp.val.fval;
-	else if (symbolEntry->type == INT_T && exp.type == INT_T)
-		symbolEntry->val.ival = exp.val.ival;
-	else if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)
-		symbolEntry->val.fval = exp.val.fval;
-	else if (symbolEntry->type == FLOAT_T && exp.type == INT_T)
-		symbolEntry->val.fval = (double) exp.val.ival;
+	char commandName[5];
+	char command[COMMAND_LEN];
+	
+	if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)  // float <- float
+		strcpy(commandName, "RASN");
+	else if (symbolEntry->type == INT_T && exp.type == INT_T)  // int <- int
+		strcpy(commandName,"IASN");
+	else if (symbolEntry->type == FLOAT_T && exp.type == INT_T)  // float <- int
+		strcpy(commandName,"ITOR");
     else {
 		yyerror("assigning FLOAT value to an INT variable\n");
 		return;
 	}
-
-	if (symbolEntry->type == INT_T) printf("value assigned: %s=%d\n", symbolEntry->name, symbolEntry->val.ival);
-	else printf("value assigned: %s=%.1f\n", symbolEntry->name, symbolEntry->val.fval);
+	sprintf(command, "%s %s %s", commandName, symbolEntry->name, exp.resVarName);
+	generateCommand(command, "");
 }
 
 struct s_symbol* symbolLookup(char name[MAX_LEN]) {
@@ -406,11 +390,62 @@ void variableToExpression(struct s_expInfo* dest, char varName[MAX_LEN]) {
 		yyerror("id not declared");
 		return;
 	}
-	
+
 	// Set values to expression
 	dest->type = symbol->type;
-	switch (dest->type) {
-		case INT_T: dest->val.ival = symbol->val.ival; break;
-		case FLOAT_T: dest->val.fval = symbol->val.fval; break;
-	}
+	strcpy(dest->resVarName, varName);
+}
+
+void numberToExpression(struct s_expInfo* dest, struct s_numInfo* numInfo) {
+	// Create temp var for the expression
+	char varName[MAX_LEN];
+	newTempId(varName, numInfo->type);
+
+	// Set values to expression
+	dest->type = numInfo->type;
+	strcpy(dest->resVarName, varName);
+
+	// Assign the number to the new var
+	char command[COMMAND_LEN];
+	if (dest->type == INT_T)
+		sprintf(command, "IASN %s %d", varName, numInfo->val.ival);	
+	else 
+		sprintf(command, "RASN %s %f", varName, numInfo->val.fval);	
+	generateCommand(command, "");
+}
+
+void newTempId(char name[MAX_LEN], enum e_varType type) {
+	// Create new var name
+	static int id = 1;
+	sprintf(name, "t%d", id);
+	insertVarToTable(name, type);
+	id++;
+}
+
+void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
+	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
+	
+	// Don't generate code if flag is off
+	if (!g_generateCode) 
+		return;
+	
+	// Create the new command node
+	struct s_generatedCommandNode* newNode = 
+		(struct s_generatedCommandNode*) malloc(sizeof(struct s_generatedCommandNode));
+	strcpy(newNode->command, command);
+	strcpy(newNode->jumpFlagName, jumpFlagName);
+	newNode->next = NULL;
+
+    // Add to commands list
+	if (g_generatedCommandsHead == NULL) 
+		g_generatedCommandsHead = newNode; // add as first command
+	else 
+		lastNode->next = newNode; // add after latest command
+	
+	lastNode = newNode; // this is the last command now
+	
+	printf("-------------------------------------------------> command generated: %s", newNode->command);
+	if(jumpFlagName[0] != '\0')
+		printf(", jumpFlagName: %s", newNode->jumpFlagName);
+	printf("\n");
 }
