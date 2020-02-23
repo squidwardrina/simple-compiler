@@ -3,10 +3,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdlib.h>
+#define IN_FILE_TYPE        ".ou"
+#define OUT_FILE_TYPE       ".qud"
+#define SIGNATURE           "\nRina Fridland\n"
+
 
 extern int yylex (void);
 void yyerror (const char *s);
 
+void createOutFileName(char*, char*);
 void insert(char[], enum e_varType);
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
@@ -97,98 +103,116 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 
 %%
 
-program: declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); }
+program     : declarations { printf("\n-- declarations ended --\n\n"); } stmt_block { freeSymbolTable(); }
 
 declarations: declarations declaration
             | /* empty */ 
 
-declaration: idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
+declaration : idlist ':' type ';' { insertVarsToTable($3, $1.idlistHead); }
 
-type: INT                        { $$ = INT_T; }
-    | FLOAT                      { $$ = FLOAT_T; }
+type        : INT                 { $$ = INT_T; }
+            | FLOAT               { $$ = FLOAT_T; }
 
-idlist: idlist ',' ID            { $$.idlistHead = createIdNode($3, $1.idlistHead); }
-      | ID                       { $$.idlistHead = createIdNode($1, NULL); }
+idlist      : idlist ',' ID       { $$.idlistHead = createIdNode($3, $1.idlistHead); }
+            | ID                  { $$.idlistHead = createIdNode($1, NULL); }
 
-stmt: assignment_stmt
-    | input_stmt
-    | output_stmt
-    | cast_stmt
-    | if_stmt
-    | while_stmt
-    | switch_stmt
-    | break_stmt
-    | stmt_block
+stmt        : assignment_stmt
+            | input_stmt
+            | output_stmt
+            | cast_stmt
+            | if_stmt
+            | while_stmt
+            | switch_stmt
+            | break_stmt
+            | stmt_block
 
-assignment_stmt: ID '=' expression ';' { assignValue($1, $3); }
+assignment_stmt : ID '=' expression ';' { assignValue($1, $3); }
 
-input_stmt: INPUT '(' ID ')' ';'
+input_stmt  : INPUT '(' ID ')' ';'
 
-output_stmt: OUTPUT '(' expression ')' ';'
+output_stmt : OUTPUT '(' expression ')' ';'
 
-cast_stmt: ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';'
+cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';'
 
-if_stmt: IF '(' boolexpr ')' stmt ELSE stmt
+if_stmt     : IF '(' boolexpr ')' stmt ELSE stmt
 
-while_stmt: WHILE '(' boolexpr ')' stmt
+while_stmt  : WHILE '(' boolexpr ')' stmt
 
-switch_stmt: SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}'
+switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}'
 
-caselist: caselist CASE NUM ':' stmtlist
-        | /* empty */
+caselist    : caselist CASE NUM ':' stmtlist
+            | /* empty */
 
-break_stmt: BREAK ';'
+break_stmt  : BREAK ';'
 
-stmt_block: '{' stmtlist '}'
+stmt_block  : '{' stmtlist '}'
 
-stmtlist: stmtlist stmt
-        | /* empty */
+stmtlist    : stmtlist stmt
+            | /* empty */
 
-boolexpr: boolexpr OR boolterm
-        | boolterm
+boolexpr    : boolexpr OR boolterm
+            | boolterm
 
-boolterm: boolterm AND boolfactor
-        | boolfactor
+boolterm    : boolterm AND boolfactor
+            | boolfactor
 
-boolfactor: NOT '(' boolexpr ')'
-          | expression RELOP expression
+boolfactor  : NOT '(' boolexpr ')'
+            | expression RELOP expression
 
-expression: expression ADDOP term { performAddop(&($$), $1, $2, $3); }
-          | term                  { copyExpInfo($$, $1); }
+expression  : expression ADDOP term        { performAddop(&($$), $1, $2, $3); }
+            | term                         { copyExpInfo($$, $1); }
 
-term: term MULOP factor           { performMulop(&($$), $1, $2, $3); }
-    | factor                      { copyExpInfo($$, $1); }
+term        : term MULOP factor            { performMulop(&($$), $1, $2, $3); }
+            | factor                       { copyExpInfo($$, $1); }
 
-factor: '(' expression ')'        { copyExpInfo($$, $2); }
-      | ID                        { variableToExpression(&($$), $1); }
-      | NUM                       { copyExpInfo($$, $1); }
+factor      : '(' expression ')'           { copyExpInfo($$, $2); }
+            | ID                           { variableToExpression(&($$), $1); }
+            | NUM                          { copyExpInfo($$, $1); }
 
 %%
 
-int main (int argc, char **argv)
-{
-  extern FILE *yyin;
-  if (argc != 2) {
-     fprintf (stderr, "Usage: %s <input-file-name>\n", argv[0]);
-	 return 1;
-  }
-  yyin = fopen (argv [1], "r");
-  if (yyin == NULL) {
-       fprintf (stderr, "failed to open %s\n", argv[1]);
-	   return 2;
-  }
-  yyparse ();
+int main (int argc, char **argv) {
+    extern FILE *yyin;
+    if (argc != 2) {
+       fprintf (stderr, "Usage: %s <input-file-name>\n", argv[0]);
+	   return 1;
+    }
+    yyin = fopen (argv [1], "r");
+    if (yyin == NULL) {
+         fprintf (stderr, "failed to open %s\n", argv[1]);
+	     return 2;
+    }
 
-  fclose (yyin);
-  return 0;
+    // Open output file
+    extern FILE *yyout;
+    char outFileName[255];
+    createOutFileName(argv [1], outFileName);
+    if ((yyout = fopen(outFileName, "w")) == NULL) {
+        fprintf(stderr, "Error opening output file");
+        exit(1);
+    }
+
+    yyparse ();
+
+    fprintf(yyout, SIGNATURE);
+    fclose(yyin);
+    fclose(yyout);
+    return 0;
+}
+
+void createOutFileName(char* inFileName, char* outFileName) {
+   int filenameLen = strlen(inFileName) - strlen(IN_FILE_TYPE);
+   memcpy(outFileName, inFileName, filenameLen);
+   outFileName[filenameLen] = '\0';
+   strcat(outFileName, OUT_FILE_TYPE);
 }
 
 void insert(char name[MAX_LEN], enum e_varType varType) {
 	struct s_symbolTableNode* newNode = 
 		(struct s_symbolTableNode*) malloc(sizeof(struct s_symbolTableNode));
-	
+
 	// TODO: check if var already defined before inserting
-	
+
 	strcpy(newNode->symbol.name, name);
 	newNode->symbol.type = varType;
 	
@@ -346,7 +370,7 @@ void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
 		return;
 	}
 	printf("symbol %s found in table\n", symbolEntry->name);
-	
+
 	// Assign the value
 	if (symbolEntry->type == FLOAT_T && exp.type == FLOAT_T)
 		symbolEntry->val.fval = exp.val.fval;
@@ -360,7 +384,7 @@ void assignValue(char name[MAX_LEN], struct s_expInfo exp) {
 		yyerror("assigning FLOAT value to an INT variable\n");
 		return;
 	}
-	
+
 	if (symbolEntry->type == INT_T) printf("value assigned: %s=%d\n", symbolEntry->name, symbolEntry->val.ival);
 	else printf("value assigned: %s=%.1f\n", symbolEntry->name, symbolEntry->val.fval);
 }

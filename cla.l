@@ -1,8 +1,4 @@
 %{
-#define IN_FILE_TYPE        ".ou"
-#define OUT_FILE_TYPE       ".tok"
-#define SIGNATURE           "\nRina Fridland\n"
-
 #include <string.h>
 #include "cla.tab.h"
 extern int atoi(const char *);
