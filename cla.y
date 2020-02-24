@@ -33,6 +33,8 @@ void relopCommand(char[], struct s_expInfo, enum e_relopType, struct s_expInfo);
 void notCommand(char[], char[]);
 void andCommand(char[], char[], char[]);
 void orCommand(char[], char[], char[]);
+void whileCommand(char*, char*);
+void replaceLabelOnce(int, char*);
 
 void freeSymbolTable();
 void freeAndSaveGeneratedCode(int, char*);
@@ -50,14 +52,16 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 
 // Code generation stuff
 struct s_generatedCommandNode {
+	int id;
 	char command[COMMAND_LEN];
 	char jumpFlagName[10];
 	struct s_generatedCommandNode* next;
 };
+int g_commandId = 1;
 int g_generateCode = 1; // if error found, code shouldn't be generated
 struct s_generatedCommandNode* g_generatedCommandsHead = NULL; // an array would be more efficient, but reallocs logic is buggy and time consuming to write
 
-enum e_bool {FALSE, TRUE};
+struct s_generatedCommandNode* g_firstUnresolvedLabelCommand = NULL; // pointer to first command with unresolved label
 
 }
 
@@ -107,7 +111,8 @@ enum e_bool {FALSE, TRUE};
 }
 
 %token <sval> UNRECOGNIZED_TOKEN
-%left IF ELSE WHILE INT FLOAT INPUT OUTPUT
+%left IF ELSE INT FLOAT INPUT OUTPUT
+%left <sval> WHILE
 %left SWITCH CASE BREAK DEFAULT STATIC_CAST
 %left OR
 %left AND
@@ -169,10 +174,10 @@ if_stmt     : IF '(' boolexpr ')'
 		      stmt 
 				{ printf("updateLabel label_end <- line"); }
 
-while_stmt  : WHILE '(' boolexpr ')'  
-				{ printf("JMPZ label_end $3"); } 
+while_stmt  : WHILE '(' boolexpr ')'
+				{ whileCommand($1, $3); } 
 			  stmt 
-				{ printf("updateLabel label_end <- line"); }
+				{ replaceLabelOnce(g_commandId, $1); }
 
 switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}' { printf("updateLabel end_switch_label <- line"); }
 
@@ -269,11 +274,17 @@ void newTempId(char* nameBuff, enum e_varType type) {
 	id++;
 }
 
+void newTempLabel(char* nameBuff) {
+	static int labelId = 1;
+	sprintf(nameBuff, "#%d", labelId);
+	labelId++;
+}
+
 void generateCommand(char command[COMMAND_LEN]) {
 	generateCommandWithLabel(command, "");
 }
 
-void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[10]) {
+void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[MAX_LEN]) {
 	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
 	
 	// Don't generate code if flag is off
@@ -285,17 +296,22 @@ void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[10]) 
 		(struct s_generatedCommandNode*) malloc(sizeof(struct s_generatedCommandNode));
 	strcpy(newNode->command, command);
 	strcpy(newNode->jumpFlagName, jumpFlagName);
+	newNode->id = g_commandId++;
 	newNode->next = NULL;
+
+	// Set pointer of first unresolved command (if this is the case)
+	if (jumpFlagName[0] != '\0' && g_firstUnresolvedLabelCommand == NULL)
+		g_firstUnresolvedLabelCommand = newNode;
 
     // Add to commands list
 	if (g_generatedCommandsHead == NULL) 
 		g_generatedCommandsHead = newNode; // add as first command
 	else 
 		lastNode->next = newNode; // add after latest command
-	
+
 	lastNode = newNode; // this is the last command now
-	
-	printf("-------------------------------------------------> command generated: %s", newNode->command);
+
+	printf("-------------------------------------------------> %d. %s", newNode->id, newNode->command);
 	if(jumpFlagName[0] != '\0')
 		printf(", jumpFlagName: %s", newNode->jumpFlagName);
 	printf("\n");
@@ -605,4 +621,29 @@ void orCommand(char* dest, char* a, char* b) {
 	generateCommand(command);
 	sprintf(command, "IGRT %s %s 0", dest, dest);
 	generateCommand(command);
+}
+
+void whileCommand(char* labelBuff, char* boolVarName) {  
+	char label[MAX_LEN];
+	newTempLabel(label);
+	
+	char command[COMMAND_LEN];
+	sprintf(command, "JMPZ %s %s", label, boolVarName);
+	generateCommandWithLabel(command, label);
+	strcpy(labelBuff, label);				   
+}
+
+void replaceLabelOnce(int commandId, char* label) {
+	struct s_generatedCommandNode* currCommand = g_firstUnresolvedLabelCommand;
+	while(currCommand != NULL && strcmp(currCommand->jumpFlagName, label))
+		currCommand = currCommand->next;
+
+	if (currCommand != NULL) {
+		currCommand->jumpFlagName[0] = '\0';
+		char *part1 = strtok(currCommand->command, "#");
+		char *part2 = strtok(NULL, "#");
+		part2 = part2 + strlen(label) - 1;
+		sprintf(currCommand->command, "%s%d%s", part1, commandId, part2);
+		printf("command %d label replaced: %s\n", currCommand->id, currCommand->command);
+	}
 }
