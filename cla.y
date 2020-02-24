@@ -58,7 +58,7 @@ struct s_symbolTableNode* g_symbolTableHead = NULL; // using globals is wrong, b
 struct s_generatedCommandNode {
 	int id;
 	char command[COMMAND_LEN];
-	char jumpFlagName[10];
+	char labelName[10];
 	struct s_generatedCommandNode* next;
 };
 int g_commandId = 1;
@@ -198,7 +198,7 @@ while_stmt  : WHILE
 				{ whileCommandEnd($1);}
 
 switch_stmt : SWITCH '(' expression ')' 
-				{ printf("$1.var = $3.resVarName"); }
+				{ printf("$1.var = $3.resVarName; jump to jumpTable"); }
 			  '{' caselist DEFAULT ':' stmtlist '}' 
 				{ 
 				printf("updateLabel end_switch_label <- line"); }
@@ -268,7 +268,7 @@ int main (int argc, char **argv) {
 }
 
 void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
-	if (symbolLookup(name) != NULL) {
+	if (symbolLookup(name) != NULL) { // not efficient, but no time to implement hashtable in C
 		yyerror("Symbol already defined!");
 		return;
 	}
@@ -281,8 +281,6 @@ void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
 
 	newNode->next = g_symbolTableHead;
 	g_symbolTableHead = newNode;
-	
-	printf("symbol inserted to table: %s, type #%d\n", newNode->symbol.name, varType);
 }
 
 void yyerror(const char *s) {
@@ -309,7 +307,7 @@ void generateCommand(char command[COMMAND_LEN]) {
 	generateCommandWithLabel(command, "");
 }
 
-void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[MAX_LEN]) {
+void generateCommandWithLabel(char command[COMMAND_LEN], char labelName[MAX_LEN]) {
 	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
 	
 	// Don't generate code if flag is off
@@ -320,12 +318,12 @@ void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[MAX_L
 	struct s_generatedCommandNode* newNode = 
 		(struct s_generatedCommandNode*) malloc(sizeof(struct s_generatedCommandNode));
 	strcpy(newNode->command, command);
-	strcpy(newNode->jumpFlagName, jumpFlagName);
+	strcpy(newNode->labelName, labelName);
 	newNode->id = g_commandId++;
 	newNode->next = NULL;
 
 	// Set pointer of first unresolved command (if this is the case)
-	if (jumpFlagName[0] != '\0' && g_firstUnresolvedLabelCommand == NULL)
+	if (labelName[0] != '\0' && g_firstUnresolvedLabelCommand == NULL)
 		g_firstUnresolvedLabelCommand = newNode;
 
     // Add to commands list
@@ -335,11 +333,6 @@ void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[MAX_L
 		lastNode->next = newNode; // add after latest command
 
 	lastNode = newNode; // this is the last command now
-
-	printf("-------------------------------------------------> %d. %s", newNode->id, newNode->command);
-	if(jumpFlagName[0] != '\0')
-		printf(", jumpFlagName: %s", newNode->jumpFlagName);
-	printf("\n");
 }
 
 struct s_idNode* createIdNode(char *name, struct s_idNode *next) {
@@ -679,15 +672,14 @@ void ifBeforeElseCommand(char* endLabel) {
 
 void replaceLabelOnce(int commandId, char* label) {
 	struct s_generatedCommandNode* currCommand = g_firstUnresolvedLabelCommand;
-	while(currCommand != NULL && strcmp(currCommand->jumpFlagName, label))
+	while(currCommand != NULL && strcmp(currCommand->labelName, label))
 		currCommand = currCommand->next;
 
 	if (currCommand != NULL) {
-		currCommand->jumpFlagName[0] = '\0';
+		currCommand->labelName[0] = '\0';
 		char *part1 = strtok(currCommand->command, "#");
 		char *part2 = strtok(NULL, "#");
 		part2 = part2 + strlen(label) - 1;
 		sprintf(currCommand->command, "%s%d%s", part1, commandId, part2);
-		printf("command %d label replaced: %s\n", currCommand->id, currCommand->command);
 	}
 }
