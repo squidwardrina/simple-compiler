@@ -34,6 +34,8 @@ void notCommand(char[], char[]);
 void andCommand(char[], char[], char[]);
 void orCommand(char[], char[], char[]);
 void whileCommand(char*, char*);
+void ifCommand(struct s_ifLabels*, char*);
+void ifBeforeElseCommand(char*);
 void replaceLabelOnce(int, char*);
 
 void freeSymbolTable();
@@ -94,6 +96,10 @@ struct s_generatedCommandNode* g_firstUnresolvedLabelCommand = NULL; // pointer 
 		enum e_varType type;
 		union u_numval val;
 	};
+	struct s_ifLabels {
+		char endLabel[MAX_LEN];
+		char elseLabel[MAX_LEN];
+	};
 }
 
 %union {
@@ -108,11 +114,13 @@ struct s_generatedCommandNode* g_firstUnresolvedLabelCommand = NULL; // pointer 
 
    struct s_idList idList;
    struct s_expInfo expInfo;
+   struct s_ifLabels ifLabels;
 }
 
 %token <sval> UNRECOGNIZED_TOKEN
-%left IF ELSE INT FLOAT INPUT OUTPUT
+%left ELSE INT FLOAT INPUT OUTPUT
 %left <sval> WHILE
+%left <ifLabels> IF
 %left SWITCH CASE BREAK DEFAULT STATIC_CAST
 %left OR
 %left AND
@@ -166,17 +174,17 @@ output_stmt : OUTPUT '(' expression ')' ';' { oututCommand($3); }
 cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';' { castCommand($1, $5, $8); }
 
 if_stmt     : IF '(' boolexpr ')' 
-				{ printf("JMPZ label_if_false $3"); } 
+				{ ifCommand(&($1), $3); } 
 			  stmt 
-				{ printf("JMP label_end"); } 
+				{ ifBeforeElseCommand($1.endLabel); } 
 			  ELSE 
-				{ printf("updateLabel label_if_false <- line"); } 
+				{ replaceLabelOnce(g_commandId, $1.elseLabel); } 
 		      stmt 
-				{ printf("updateLabel label_end <- line"); }
+				{ replaceLabelOnce(g_commandId, $1.endLabel); }
 
 while_stmt  : WHILE '(' boolexpr ')'
-				{ whileCommand($1, $3); } 
-			  stmt 
+				{ whileCommand($1, $3); }
+			  stmt
 				{ replaceLabelOnce(g_commandId, $1); }
 
 switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}' { printf("updateLabel end_switch_label <- line"); }
@@ -624,13 +632,25 @@ void orCommand(char* dest, char* a, char* b) {
 }
 
 void whileCommand(char* labelBuff, char* boolVarName) {  
-	char label[MAX_LEN];
-	newTempLabel(label);
+	newTempLabel(labelBuff);
+	char command[COMMAND_LEN];
+	sprintf(command, "JMPZ %s %s", labelBuff, boolVarName);
+	generateCommandWithLabel(command, labelBuff);
+}
+
+void ifCommand(struct s_ifLabels* labelsBuff, char* boolVarName) {  
+	newTempLabel(labelsBuff->endLabel);
+	newTempLabel(labelsBuff->elseLabel);
 	
 	char command[COMMAND_LEN];
-	sprintf(command, "JMPZ %s %s", label, boolVarName);
-	generateCommandWithLabel(command, label);
-	strcpy(labelBuff, label);				   
+	sprintf(command, "JMPZ %s %s", labelsBuff->elseLabel, boolVarName);
+	generateCommandWithLabel(command, labelsBuff->elseLabel);
+}
+
+void ifBeforeElseCommand(char* endLabel) {
+	char command[MAX_LEN];
+	sprintf(command, "JUMP %s", endLabel);
+	generateCommandWithLabel(command, endLabel);
 }
 
 void replaceLabelOnce(int commandId, char* label) {
