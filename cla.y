@@ -16,7 +16,8 @@ extern FILE *yyout;
 
 struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
-void generateCommand(char[], char[]);
+void generateCommand(char[]);
+void generateCommandWithLabel(char[], char[]);
 
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
 void varToExp(struct s_expInfo*, char[]);
@@ -126,7 +127,7 @@ enum e_bool {FALSE, TRUE};
 
 %%
 
-program     : declarations stmt_block { generateCommand("HALT", ""); }
+program     : declarations stmt_block { generateCommand("HALT"); }
 
 declarations: declarations declaration
             | /* empty */ 
@@ -268,7 +269,11 @@ void newTempId(char* nameBuff, enum e_varType type) {
 	id++;
 }
 
-void generateCommand(char command[COMMAND_LEN], char jumpFlagName[10]) {
+void generateCommand(char command[COMMAND_LEN]) {
+	generateCommandWithLabel(command, "");
+}
+
+void generateCommandWithLabel(char command[COMMAND_LEN], char jumpFlagName[10]) {
 	static struct s_generatedCommandNode* lastNode = NULL; // pointer to the last command
 	
 	// Don't generate code if flag is off
@@ -392,7 +397,7 @@ void anyopCommand(struct s_expInfo* res,struct s_expInfo a,
 	// Generate the command
 	sprintf(command, "%c%s %s %s %s", prefix, opStr, res->resVarName, 
 	                                  a.resVarName, b.resVarName);	
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void mulopCommand(struct s_expInfo* res, 
@@ -453,7 +458,7 @@ void assignCommand(char name[MAX_LEN], struct s_expInfo exp) {
 		return;
 	}
 	sprintf(command, "%s %s %s", commandName, symbol->name, exp.resVarName);
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void varToExp(struct s_expInfo* dest, char varName[MAX_LEN]) {
@@ -479,7 +484,7 @@ void numToExp(struct s_expInfo* dest, struct s_numInfo* numInfo) {
 		sprintf(command, "IASN %s %d", varName, numInfo->val.ival);	
 	else 
 		sprintf(command, "RASN %s %f", varName, numInfo->val.fval);	
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void inputCommand(char varName[MAX_LEN]) {
@@ -488,13 +493,13 @@ void inputCommand(char varName[MAX_LEN]) {
 	// Generate command
 	char command[COMMAND_LEN];
 	sprintf(command, "%cINP %s", prefixChar(symbol->type), varName);
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void oututCommand(struct s_expInfo exp) {
 	char command[COMMAND_LEN];
 	sprintf(command, "%cPRT %s", prefixChar(exp.type), exp.resVarName);
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void castCommand(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo exp) {
@@ -512,7 +517,7 @@ void castCommand(char varName[MAX_LEN], enum e_varType toType, struct s_expInfo 
 	
 	char command[COMMAND_LEN];
 	sprintf(command, "%s %s %s", commandName, varName, exp.resVarName);
-	generateCommand(command, "");	
+	generateCommand(command);	
 }
 
 void castToFloat(struct s_expInfo* exp) {
@@ -523,7 +528,7 @@ void castToFloat(struct s_expInfo* exp) {
 	// Generate cast command
 	char command[COMMAND_LEN];
 	sprintf(command, "ITOR %s %s", varName, exp->resVarName);
-	generateCommand(command, "");
+	generateCommand(command);
 
 	// Set the new casted var name to exp
 	strcpy(exp->resVarName, varName);
@@ -553,7 +558,7 @@ void relopCommand(char dest[MAX_LEN], struct s_expInfo exp1,
 	char command[COMMAND_LEN];
 	sprintf(command, "%c%s %s %s %s", prefix, cmdName, dest, 
 	                                  exp1.resVarName, exp2.resVarName);
-	generateCommand(command, "");
+	generateCommand(command);
 
 	// In case of ">=" or "<=" add another condition with OR
 	if (relop == GE || relop == LE) {
@@ -562,13 +567,13 @@ void relopCommand(char dest[MAX_LEN], struct s_expInfo exp1,
 		newTempId(helpVar, INT_T);
 		sprintf(command, "%cEQL %s %s %s", prefix, helpVar,
 	                                       exp1.resVarName, exp2.resVarName);
-		generateCommand(command, "");
+		generateCommand(command);
 
 		// Add the two results and check if we had at least one TRUE
 		sprintf(command, "IADD %s %s %s", helpVar, dest, helpVar);
-		generateCommand(command, "");
+		generateCommand(command);
 		sprintf(command, "IGRT %s %s 0", dest, helpVar);
-		generateCommand(command, "");
+		generateCommand(command);
 	}
 }
 
@@ -576,7 +581,7 @@ void notCommand(char dest[MAX_LEN], char src[MAX_LEN]) {
 	newTempId(dest, INT_T);
 	char command[COMMAND_LEN];
 	sprintf(command, "IEQL %s %s 0", dest, src); // dest = (src == false)
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 
@@ -586,9 +591,9 @@ void andCommand(char* dest, char* a, char* b) {
 	
 	// dest = ((a + b) == 2)
 	sprintf(command, "IADD %s %s %s", dest, a, b);
-	generateCommand(command, "");
+	generateCommand(command);
 	sprintf(command, "IEQL %s %s 2", dest, dest);
-	generateCommand(command, "");
+	generateCommand(command);
 }
 
 void orCommand(char* dest, char* a, char* b) {
@@ -597,7 +602,7 @@ void orCommand(char* dest, char* a, char* b) {
 	
 	// dest = ((a + b) > 0)
 	sprintf(command, "IADD %s %s %s", dest, a, b);
-	generateCommand(command, "");
+	generateCommand(command);
 	sprintf(command, "IGRT %s %s 0", dest, dest);
-	generateCommand(command, "");
+	generateCommand(command);
 }
