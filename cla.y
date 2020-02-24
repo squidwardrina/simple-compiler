@@ -8,7 +8,10 @@
 #define IN_FILE_TYPE        ".ou"
 #define OUT_FILE_TYPE       ".qud"
 #define SIGNATURE           "\nRina Fridland\n"
+
 #define COMMAND_LEN         100
+#define STMT_END_LABEL      "#stmtEnd"
+#define LBL_PREFIX          "#"
 
 extern int yylex (void);
 void yyerror (const char *s);
@@ -38,7 +41,9 @@ void whileCommand(struct s_whileLabels*, char*);
 void whileCommandEnd(struct s_whileLabels);
 void ifCommand(struct s_ifLabels*, char*);
 void ifBeforeElseCommand(char*);
+void breakCommand();
 void replaceLabelOnce(int, char*);
+void replaceLabelEverywhere(int, char*);
 
 void freeSymbolTable();
 void freeAndSaveGeneratedCode(int, char*);
@@ -197,20 +202,23 @@ while_stmt  : WHILE
 			  stmt
 				{ whileCommandEnd($1);}
 
-switch_stmt : SWITCH '(' expression ')' 
-				{ printf("$1.var = $3.resVarName; jump to jumpTable"); }
+switch_stmt : SWITCH
+				{ printf("Sorry, no 'switch' semantics :(\n"); }
+              '(' expression ')' 
+			    { if ($4.type != INT_T) yyerror("Only integer allowed after 'switch'"); }
+				{ /* newTempLabel($1.jumpTableLabel); */ }
 			  '{' caselist DEFAULT ':' stmtlist '}' 
-				{ 
-				printf("updateLabel end_switch_label <- line"); }
+				{ /* replaceLabelOnce(g_commandId, $1.jumpTableLabel); */ }
 
 caselist    : caselist CASE NUM ':' 
-				{ printf("$$.jumpTable = $1.jumpTable+($3, line)"); } 
+			    { if ($3.type != INT_T) yyerror("Only integer allowed after 'case'"); }
+				{ /* $$.jumpTable = $1.jumpTable.add($3, cmdId)"); */ } 
 			  stmtlist
             | /* empty */
 
-break_stmt  : BREAK ';' { printf("JMP end_switch_label"); }
+break_stmt  : BREAK ';' { breakCommand(); }
 
-stmt_block  : '{' stmtlist '}'
+stmt_block  : '{' stmtlist '}' { replaceLabelEverywhere(g_commandId, STMT_END_LABEL); }
 
 stmtlist    : stmtlist stmt
             | /* empty */
@@ -299,7 +307,7 @@ void newTempId(char* nameBuff, enum e_varType type) {
 
 void newTempLabel(char* nameBuff) {
 	static int labelId = 1;
-	sprintf(nameBuff, "#%d", labelId);
+	sprintf(nameBuff, "%s%d", LBL_PREFIX, labelId);
 	labelId++;
 }
 
@@ -642,7 +650,7 @@ void orCommand(char* dest, char* a, char* b) {
 }
 
 void whileCommandEnd(struct s_whileLabels whileLabels) {
-	char command[MAX_LEN];
+	char command[COMMAND_LEN];
 	sprintf(command, "JUMP %d", whileLabels.loopCommandId);
 	generateCommand(command);
 	replaceLabelOnce(g_commandId, whileLabels.endLabel); 
@@ -665,9 +673,32 @@ void ifCommand(struct s_ifLabels* labelsBuff, char* boolVarName) {
 }
 
 void ifBeforeElseCommand(char* endLabel) {
-	char command[MAX_LEN];
+	char command[COMMAND_LEN];
 	sprintf(command, "JUMP %s", endLabel);
 	generateCommandWithLabel(command, endLabel);
+}
+
+void breakCommand() {
+	char command[COMMAND_LEN];
+	sprintf(command, "JUMP %s", STMT_END_LABEL);
+	generateCommandWithLabel(command, STMT_END_LABEL);
+}
+
+void replaceLabel(struct s_generatedCommandNode* cmd, int commandId, char* label) {
+	cmd->labelName[0] = '\0';
+	char *part1 = strtok(cmd->command, LBL_PREFIX);
+	char *part2 = strtok(NULL, LBL_PREFIX);
+	part2 = part2 + strlen(label) - 1;
+	sprintf(cmd->command, "%s%d%s", part1, commandId, part2);
+}
+
+void replaceLabelEverywhere(int commandId, char* label) {
+	struct s_generatedCommandNode* currCommand = g_firstUnresolvedLabelCommand;
+	while(currCommand != NULL) {
+		if (!strcmp(currCommand->labelName, label))
+			replaceLabel(currCommand, commandId, label);
+		currCommand = currCommand->next;
+	}
 }
 
 void replaceLabelOnce(int commandId, char* label) {
@@ -675,11 +706,6 @@ void replaceLabelOnce(int commandId, char* label) {
 	while(currCommand != NULL && strcmp(currCommand->labelName, label))
 		currCommand = currCommand->next;
 
-	if (currCommand != NULL) {
-		currCommand->labelName[0] = '\0';
-		char *part1 = strtok(currCommand->command, "#");
-		char *part2 = strtok(NULL, "#");
-		part2 = part2 + strlen(label) - 1;
-		sprintf(currCommand->command, "%s%d%s", part1, commandId, part2);
-	}
+	if (currCommand != NULL)
+		replaceLabel(currCommand, commandId, label);
 }
