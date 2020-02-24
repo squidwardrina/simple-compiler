@@ -159,16 +159,28 @@ output_stmt : OUTPUT '(' expression ')' ';' { oututCommand($3); }
 
 cast_stmt   : ID '=' STATIC_CAST '(' type ')' '(' expression ')' ';' { castCommand($1, $5, $8); }
 
-if_stmt     : IF '(' boolexpr ')' stmt ELSE stmt
+if_stmt     : IF '(' boolexpr ')' 
+				{ printf("JMPZ label_if_false $3"); } 
+			  stmt 
+				{ printf("JMP label_end"); } 
+			  ELSE 
+				{ printf("updateLabel label_if_false <- line"); } 
+		      stmt 
+				{ printf("updateLabel label_end <- line"); }
 
-while_stmt  : WHILE '(' boolexpr ')' stmt
+while_stmt  : WHILE '(' boolexpr ')'  
+				{ printf("JMPZ label_end $3"); } 
+			  stmt 
+				{ printf("updateLabel label_end <- line"); }
 
-switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}'
+switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}' { printf("updateLabel end_switch_label <- line"); }
 
-caselist    : caselist CASE NUM ':' stmtlist
+caselist    : caselist CASE NUM ':' 
+				{ printf("$$.jumpTable = $1.jumpTable+($3, line)"); } 
+			  stmtlist
             | /* empty */
 
-break_stmt  : BREAK ';'
+break_stmt  : BREAK ';' { printf("JMP end_switch_label"); }
 
 stmt_block  : '{' stmtlist '}'
 
