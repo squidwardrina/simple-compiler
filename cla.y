@@ -33,7 +33,8 @@ void relopCommand(char[], struct s_expInfo, enum e_relopType, struct s_expInfo);
 void notCommand(char[], char[]);
 void andCommand(char[], char[], char[]);
 void orCommand(char[], char[], char[]);
-void whileCommand(char*, char*);
+void whileCommand(struct s_whileLabels*, char*);
+void whileCommandEnd(struct s_whileLabels);
 void ifCommand(struct s_ifLabels*, char*);
 void ifBeforeElseCommand(char*);
 void replaceLabelOnce(int, char*);
@@ -96,9 +97,14 @@ struct s_generatedCommandNode* g_firstUnresolvedLabelCommand = NULL; // pointer 
 		enum e_varType type;
 		union u_numval val;
 	};
+
 	struct s_ifLabels {
 		char endLabel[MAX_LEN];
 		char elseLabel[MAX_LEN];
+	};
+	struct s_whileLabels {
+		char endLabel[MAX_LEN];
+		int loopCommandId;
 	};
 }
 
@@ -115,11 +121,12 @@ struct s_generatedCommandNode* g_firstUnresolvedLabelCommand = NULL; // pointer 
    struct s_idList idList;
    struct s_expInfo expInfo;
    struct s_ifLabels ifLabels;
+   struct s_whileLabels whileLabels;
 }
 
 %token <sval> UNRECOGNIZED_TOKEN
 %left ELSE INT FLOAT INPUT OUTPUT
-%left <sval> WHILE
+%left <whileLabels> WHILE
 %left <ifLabels> IF
 %left SWITCH CASE BREAK DEFAULT STATIC_CAST
 %left OR
@@ -182,10 +189,12 @@ if_stmt     : IF '(' boolexpr ')'
 		      stmt 
 				{ replaceLabelOnce(g_commandId, $1.endLabel); }
 
-while_stmt  : WHILE '(' boolexpr ')'
-				{ whileCommand($1, $3); }
+while_stmt  : WHILE 
+				{ $1.loopCommandId = g_commandId; }
+				'(' boolexpr ')'
+				{ whileCommand(&($1), $4); }
 			  stmt
-				{ replaceLabelOnce(g_commandId, $1); }
+				{ whileCommandEnd($1);}
 
 switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}' { printf("updateLabel end_switch_label <- line"); }
 
@@ -631,11 +640,18 @@ void orCommand(char* dest, char* a, char* b) {
 	generateCommand(command);
 }
 
-void whileCommand(char* labelBuff, char* boolVarName) {  
-	newTempLabel(labelBuff);
+void whileCommandEnd(struct s_whileLabels whileLabels) {
+	char command[MAX_LEN];
+	sprintf(command, "JUMP %d", whileLabels.loopCommandId);
+	generateCommand(command);
+	replaceLabelOnce(g_commandId, whileLabels.endLabel); 
+}
+
+void whileCommand(struct s_whileLabels* whileLabels, char* boolVarName) {  
+	newTempLabel(whileLabels->endLabel);
 	char command[COMMAND_LEN];
-	sprintf(command, "JMPZ %s %s", labelBuff, boolVarName);
-	generateCommandWithLabel(command, labelBuff);
+	sprintf(command, "JMPZ %s %s", whileLabels->endLabel, boolVarName);
+	generateCommandWithLabel(command, whileLabels->endLabel);
 }
 
 void ifCommand(struct s_ifLabels* labelsBuff, char* boolVarName) {  
