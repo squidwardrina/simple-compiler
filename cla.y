@@ -18,6 +18,7 @@ struct s_idNode* createIdNode(char*, struct s_idNode*);
 void insertVarsToTable(enum e_varType, struct s_idNode*);
 void generateCommand(char[]);
 void generateCommandWithLabel(char[], char[]);
+struct s_symbol* symbolLookup(char[]);
 
 void copyExpInfo(struct s_expInfo, struct s_expInfo);
 void varToExp(struct s_expInfo*, char[]);
@@ -196,7 +197,11 @@ while_stmt  : WHILE
 			  stmt
 				{ whileCommandEnd($1);}
 
-switch_stmt : SWITCH '(' expression ')' '{' caselist DEFAULT ':' stmtlist '}' { printf("updateLabel end_switch_label <- line"); }
+switch_stmt : SWITCH '(' expression ')' 
+				{ printf("$1.var = $3.resVarName"); }
+			  '{' caselist DEFAULT ':' stmtlist '}' 
+				{ 
+				printf("updateLabel end_switch_label <- line"); }
 
 caselist    : caselist CASE NUM ':' 
 				{ printf("$$.jumpTable = $1.jumpTable+($3, line)"); } 
@@ -263,14 +268,17 @@ int main (int argc, char **argv) {
 }
 
 void insertVarToTable(char name[MAX_LEN], enum e_varType varType) {
+	if (symbolLookup(name) != NULL) {
+		yyerror("Symbol already defined!");
+		return;
+	}
+
 	struct s_symbolTableNode* newNode = 
 		(struct s_symbolTableNode*) malloc(sizeof(struct s_symbolTableNode));
 
-	// TODO: check if var already defined before inserting
-
 	strcpy(newNode->symbol.name, name);
 	newNode->symbol.type = varType;
-	
+
 	newNode->next = g_symbolTableHead;
 	g_symbolTableHead = newNode;
 	
